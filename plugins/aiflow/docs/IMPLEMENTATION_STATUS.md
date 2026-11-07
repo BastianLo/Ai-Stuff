@@ -15,7 +15,7 @@ Arbeitsnotizen für die Umsetzung von PLAN.md, Phasen 0–8. Wird nach jedem Sch
 - [x] P0 Fundament
 - [x] P1 Core (27 Tests, alle Beispiele validieren)
 - [x] P2 Engine + Testkit + Store (24 Szenario-Tests, 6 Store-Tests)
-- [ ] P3 Workspace-git + Runtime-opencode + Plugin (Worker-Rolle)
+- [~] P3 Workspace-git (fertig, 8 Tests inkl. Integration) + Runtime-opencode + Plugin (Worker-Rolle)
 - [ ] P4 Server + Client + CLI
 - [ ] P5 Web I (Agenten, Workflow-Editor)
 - [ ] P6 Plugin Bridge-Rolle (v1/v2, TUI)

@@ -1,6 +1,7 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { AiflowError, type JsonSchema } from "@aiflow/core";
 import type { AgentRuntime, AgentStepContext, AgentStepRequest, AgentStepResult, DelegationResult, DelegationTask, RuntimeCapabilities } from "@aiflow/engine";
-import type { MemoryDocumentStore, MemoryWorkspaceManager } from "./memory.js";
 import { sampleFromSchema } from "./sample.js";
 
 export interface FakeTurn {
@@ -21,6 +22,29 @@ export interface FakeTurn {
   text?: string;
 }
 
+/** Wie der Fake Dateien schreibt: im Speicher oder (für Integrationstests) auf der Platte. */
+export interface FakeIo {
+  workspace?: { writeByPath(path: string, relative: string, content: string): void };
+  documents?: { writeByPath(path: string, content: string): void };
+}
+
+/** Schreibt direkt ins Dateisystem (für Tests mit echtem git-Workspace). */
+export const diskIo: FakeIo = {
+  workspace: {
+    writeByPath(path, relative, content) {
+      const target = join(path, relative);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, content);
+    },
+  },
+  documents: {
+    writeByPath(path, content) {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, content);
+    },
+  },
+};
+
 export type FakeEntry = FakeTurn | FakeTurn[] | ((request: AgentStepRequest, call: number) => FakeTurn);
 
 /**
@@ -36,7 +60,7 @@ export class FakeRuntime implements AgentRuntime {
 
   constructor(
     private readonly script: Record<string, FakeEntry> = {},
-    private readonly io: { workspace?: MemoryWorkspaceManager; documents?: MemoryDocumentStore } = {},
+    private readonly io: FakeIo = {},
   ) {}
 
   capabilities(): RuntimeCapabilities {
