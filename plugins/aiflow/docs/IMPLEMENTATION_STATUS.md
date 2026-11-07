@@ -23,8 +23,8 @@ Arbeitsnotizen für die Umsetzung von PLAN.md, Phasen 0–8. Wird nach jedem Sch
 - [x] P2 Engine + Testkit + Store (24 Szenario-Tests, 6 Store-Tests)
 - [x] P3 Workspace-git (8 Tests inkl. Integration), Runtime-opencode v1/v2 (10 Tests, gemockte Server), Plugin Worker-Rolle + Runtime-opencode + Plugin (Worker-Rolle)
 - [x] P4 Server (Hono, Auth/OTP, Host/Origin-Schutz, SSE, Worker-API), Client, CLI (14 API-Tests); `pnpm check` grün (95 Tests)
-- [ ] P5 Web I (Agenten, Workflow-Editor)
+- [x] P5 Web I: Agenten-Editor (alle Tabs, Playground), Bausteine, Workflow-Editor (Drag & Drop, Ports, Inspector, Zugriffs-Matrix, Live-Validierung, Testlauf, YAML, Undo/Redo)
 - [~] P6 Plugin Bridge-Rolle (v1/v2 Server + TUI geschrieben, typgeprüft gegen echte APIs; 6 Tests; Smoke-Test mit echtem opencode offen)
-- [ ] P7 Web II (Runs, Review, History, Inbox)
+- [x] P7 Web II: Run-Ansicht (Live-Graph, Gantt, Schritt-Details mit Prompt/Verlauf/Diff), Review (Teil-Übernahme, Änderungen anfordern, Branch), History, Inbox, Dashboard
 - [ ] P8 Für-jedes, Sub-Workflows, Sub-Agenten, Stimmen, Simulation, Playground
 - [ ] Tests + Screenshots (docs/screenshots)

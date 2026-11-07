@@ -1520,7 +1520,7 @@ class RunController {
 
   private defaultReport(fileCount: number): string {
     const lines = [`# ${this.workflow.name}`, "", `**Auftrag:** ${promptText(this.state.spec.input)}`, "", "## Ablauf"];
-    for (const e of this.journal()) lines.push(`- **${e.label}**: ${e.summary}${e.port && e.port !== "next" ? ` → ${e.port}` : ""}`);
+    for (const e of this.journal()) lines.push(`- **${e.label}**: ${e.summary}${e.port && e.port !== "next" && !e.summary.includes(e.port) ? ` → ${e.port}` : ""}`);
     lines.push("", `**Geänderte Dateien:** ${fileCount}`);
     return lines.join("\n");
   }

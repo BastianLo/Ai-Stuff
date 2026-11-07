@@ -1,0 +1,21 @@
+@import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+html, body, #root { height: 100%; }
+body { @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100; }
+
+.react-flow__attribution { display: none; }
+.dark .react-flow { --xy-background-color: #020617; --xy-edge-stroke: #64748b; --xy-minimap-background-color: #0f172a; --xy-controls-button-background-color: #1e293b; --xy-controls-button-color: #e2e8f0; --xy-controls-button-border-color: #334155; }
+.react-flow__handle { width: 10px; height: 10px; }
+
+@keyframes aiflow-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgb(99 102 241 / 0.55); } 50% { box-shadow: 0 0 0 6px rgb(99 102 241 / 0); } }
+.node-running { animation: aiflow-pulse 1.6s ease-in-out infinite; }
+
+.diff-line { white-space: pre; font-family: var(--font-mono); font-size: 12px; line-height: 1.55; }
