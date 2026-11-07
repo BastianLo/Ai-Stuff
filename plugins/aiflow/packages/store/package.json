@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@aiflow/core": "workspace:*",
-    "yaml": "^2.9.1"
+    "yaml": "^2.9.1",
+    "@aiflow/engine": "workspace:*"
   }
 }

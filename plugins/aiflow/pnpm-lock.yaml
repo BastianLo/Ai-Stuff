@@ -125,6 +125,9 @@ importers:
       '@aiflow/core':
         specifier: workspace:*
         version: link:../core
+      '@aiflow/engine':
+        specifier: workspace:*
+        version: link:../engine
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
@@ -143,6 +146,9 @@ importers:
       '@aiflow/core':
         specifier: workspace:*
         version: link:../core
+      '@aiflow/engine':
+        specifier: workspace:*
+        version: link:../engine
 
 packages:
 

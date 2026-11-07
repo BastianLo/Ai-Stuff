@@ -12,6 +12,7 @@
     }
   },
   "dependencies": {
-    "@aiflow/core": "workspace:*"
+    "@aiflow/core": "workspace:*",
+    "@aiflow/engine": "workspace:*"
   }
 }

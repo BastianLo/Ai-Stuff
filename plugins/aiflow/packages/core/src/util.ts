@@ -14,13 +14,13 @@ export function randomIds(): IdGenerator {
 }
 
 /** Deterministische IDs für Tests: `prefix_1`, `prefix_2`, … */
-export function sequentialIds(): IdGenerator {
+export function sequentialIds(namespace = ""): IdGenerator {
   const counters = new Map<string, number>();
   return {
     next(prefix) {
       const n = (counters.get(prefix) ?? 0) + 1;
       counters.set(prefix, n);
-      return `${prefix}_${n}`;
+      return `${prefix}_${namespace}${n}`;
     },
   };
 }

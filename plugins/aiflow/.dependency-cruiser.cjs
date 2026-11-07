@@ -5,8 +5,8 @@ module.exports = {
   forbidden: [
     forbid("core-is-leaf", pkg("core"), "^packages/(?!core/)"),
     forbid("engine-only-core", pkg("engine"), "^packages/(?!engine/|core/)"),
-    forbid("store-only-core", pkg("store"), "^packages/(?!store/|core/)"),
-    forbid("workspace-only-core", pkg("workspace-git"), "^packages/(?!workspace-git/|core/)"),
+    forbid("store-only-core-engine", pkg("store"), "^packages/(?!store/|core/|engine/)"),
+    forbid("workspace-only-core-engine", pkg("workspace-git"), "^packages/(?!workspace-git/|core/|engine/)"),
     forbid("runtime-only-core-engine", pkg("runtime-opencode"), "^packages/(?!runtime-opencode/|core/|engine/)"),
     forbid("runtime-v1-not-v2", "^packages/runtime-opencode/src/v1/", "^packages/runtime-opencode/src/v2/"),
     forbid("runtime-v2-not-v1", "^packages/runtime-opencode/src/v2/", "^packages/runtime-opencode/src/v1/"),

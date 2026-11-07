@@ -11,7 +11,7 @@ Lies zuerst `PLAN.md` (Architektur) und `docs/IMPLEMENTATION_STATUS.md` (Stand).
 ## Paketgrenzen (durch dependency-cruiser erzwungen)
 - `core`: Domänenmodell, keine I/O, keine Abhängigkeit auf andere Pakete.
 - `engine`: nur `core` + eigene Interfaces (Ports).
-- `store`, `workspace-git`: nur `core`. `runtime-opencode`: `core` + `engine` (Ports). Treiber `v1/` und `v2/` importieren sich nie gegenseitig.
+- `store`, `workspace-git`: `core` + `engine` (implementieren dessen Ports). `runtime-opencode`: `core` + `engine` (Ports). Treiber `v1/` und `v2/` importieren sich nie gegenseitig.
 - `server` ist die einzige Stelle, die alles zusammensteckt.
 - `web`, `cli`, `opencode-plugin` sprechen nur über `client` mit dem Daemon.
 
