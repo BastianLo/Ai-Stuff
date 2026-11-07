@@ -14,6 +14,7 @@ export default defineConfig({
       "@aiflow/testkit": pkg("testkit"),
       "@aiflow/server": pkg("server"),
       "@aiflow/client": pkg("client"),
+      "opencode-aiflow": fileURLToPath(new URL("./packages/opencode-plugin/src/index.ts", import.meta.url)),
     },
   },
   test: {

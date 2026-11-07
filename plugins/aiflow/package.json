@@ -6,7 +6,7 @@
   "engines": { "node": ">=22.12" },
   "scripts": {
     "build": "tsc -b packages/tsconfig.build.json && pnpm --filter @aiflow/web build",
-    "typecheck": "tsc -b packages/tsconfig.build.json && tsc -p tsconfig.check.json",
+    "typecheck": "tsc -b packages/tsconfig.build.json && tsc -p tsconfig.check.json && tsc -p packages/opencode-plugin/tsconfig.tui.json",
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test -c e2e/playwright.config.ts",
