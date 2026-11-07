@@ -26,6 +26,7 @@ export class WorkerApi {
     private readonly fetchImpl: typeof fetch = (i, init) => fetch(i, init),
   ) {}
 
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- T ist der erwartete Antworttyp
   private async call<T>(method: string, path: string, body?: unknown): Promise<{ status: number; data: T }> {
     const res = await this.fetchImpl(`${this.env.daemonUrl}/api/worker${path}`, {
       method,

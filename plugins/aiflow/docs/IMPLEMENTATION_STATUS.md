@@ -9,6 +9,7 @@ Arbeitsnotizen für die Umsetzung von PLAN.md, Phasen 0–8. Wird nach jedem Sch
 - Run-Zustand: Event-Log (Historie) + Zustands-Snapshot nach jedem Übergang (Wiederaufnahme). Siehe ADR-002.
 - Map-Knoten („Für jedes“) und Sub-Agenten laufen als Unter-Schritte innerhalb eines Schritts (gemeinsamer Sub-Step-Runner).
 - `exactOptionalPropertyTypes` vorerst aus (Reibung mit Zod-Optionals); alle anderen strikten Optionen an.
+- Simulations-Runtime (`--runtime simulation`) für Demos, Testlauf und E2E; schreibt echte Dateien.
 - Ports intern englisch: `next`, `error`; benutzerdefinierte Ports frei.
 
 ## Wichtige Erkenntnisse
@@ -21,7 +22,7 @@ Arbeitsnotizen für die Umsetzung von PLAN.md, Phasen 0–8. Wird nach jedem Sch
 - [x] P1 Core (27 Tests, alle Beispiele validieren)
 - [x] P2 Engine + Testkit + Store (24 Szenario-Tests, 6 Store-Tests)
 - [x] P3 Workspace-git (8 Tests inkl. Integration), Runtime-opencode v1/v2 (10 Tests, gemockte Server), Plugin Worker-Rolle + Runtime-opencode + Plugin (Worker-Rolle)
-- [ ] P4 Server + Client + CLI
+- [x] P4 Server (Hono, Auth/OTP, Host/Origin-Schutz, SSE, Worker-API), Client, CLI (14 API-Tests); `pnpm check` grün (95 Tests)
 - [ ] P5 Web I (Agenten, Workflow-Editor)
 - [~] P6 Plugin Bridge-Rolle (v1/v2 Server + TUI geschrieben, typgeprüft gegen echte APIs; 6 Tests; Smoke-Test mit echtem opencode offen)
 - [ ] P7 Web II (Runs, Review, History, Inbox)

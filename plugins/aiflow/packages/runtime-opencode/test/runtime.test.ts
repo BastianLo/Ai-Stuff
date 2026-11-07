@@ -159,7 +159,7 @@ describe("V2-Treiber", () => {
     const ctx = context();
     bridge.bind("s", request({ delegation: { allowed: [], mode: "optional", maxParallel: 2, remainingRuns: 3 } }), ctx);
     await bridge.delegate("s", [{ agent: "code-explorer", task: "x" }]);
-    expect(ctx.delegate).toHaveBeenCalled();
+    expect(vi.mocked(ctx).delegate.mock.calls).toHaveLength(1);
     bridge.bind("t", request(), ctx);
     expect(() => bridge.delegate("t", [])).toThrow(/keine Sub-Agenten/);
   });

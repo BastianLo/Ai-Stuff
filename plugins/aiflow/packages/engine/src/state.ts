@@ -1,5 +1,14 @@
 import type { AgentDefinition, ContextInclude, InboxItem, Outcome, ReviewData, RunStatus, Snippet, StepRecord, Workflow, WorkspaceMode } from "@aiflow/core";
-import type { WorkspaceRef } from "./ports.js";
+
+/** Arbeitsverzeichnis eines Tokens (in der Regel ein git worktree). */
+export interface WorkspaceRef {
+  id: string;
+  path: string;
+  /** Aktueller Commit */
+  head: string;
+  /** Basis-Commit des Runs */
+  base: string;
+}
 
 export interface ForkFrame {
   forkId: string;
@@ -109,6 +118,12 @@ export function lastStepOf(state: RunState, nodeId: string): import("@aiflow/cor
   return undefined;
 }
 
+/** Der Auftrag eines Runs als Text. */
+export function promptText(input: Record<string, unknown>): string {
+  const prompt = input.prompt;
+  return typeof prompt === "string" ? prompt : prompt === undefined ? "" : JSON.stringify(prompt);
+}
+
 /** Kurzfassung eines Runs für Listen und die History. */
 export function summarizeRun(state: RunState): import("@aiflow/core").RunSummary {
   const steps = Object.values(state.steps).filter((s) => !s.parentStepId && s.nodeType !== "start" && s.nodeType !== "end");
@@ -118,7 +133,7 @@ export function summarizeRun(state: RunState): import("@aiflow/core").RunSummary
     workflowName: state.spec.workflow.name,
     workflowVersion: state.spec.version,
     projectDir: state.spec.projectDir,
-    prompt: String(state.spec.input.prompt ?? ""),
+    prompt: promptText(state.spec.input),
     status: state.status,
     ...(state.outcome ? { outcome: state.outcome } : {}),
     createdAt: state.createdAt,

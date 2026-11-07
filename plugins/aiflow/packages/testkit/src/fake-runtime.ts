@@ -105,7 +105,7 @@ export class FakeRuntime implements AgentRuntime {
     context.activity({ kind: "tool", tool: "read", status: "called" });
     const handoff = turn.handoff ?? this.buildHandoff(request.handoffSchema, turn, request);
     const result: AgentStepResult = { sessionId: `ses_${request.stepId}`, handoff, usage: { inputTokens: 100, outputTokens: 50 } };
-    if (turn.votes) result.votes = turn.votes.map((b) => ({ ...(handoff as object), branch: b, branchReason: `Stimme für ${b}` }));
+    if (turn.votes) result.votes = turn.votes.map((b) => ({ ...(handoff), branch: b, branchReason: `Stimme für ${b}` }));
     return result;
   }
 

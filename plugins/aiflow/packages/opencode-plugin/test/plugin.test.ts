@@ -52,10 +52,11 @@ describe("Guard der Worker-Rolle", () => {
 describe("Worker-Hooks gegen die Worker-API", () => {
   function fakeFetch(responses: Record<string, unknown>): typeof fetch {
     return (async (url: string | URL | Request, init?: RequestInit) => {
-      const key = `${init?.method ?? "GET"} ${String(url).replace("http://d/api/worker", "")}`;
+      const href = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+      const key = `${init?.method ?? "GET"} ${href.replace("http://d/api/worker", "")}`;
       const body = responses[key];
       return new Response(body === undefined ? "" : JSON.stringify(body), { status: body === undefined ? 404 : 200 });
-    }) as typeof fetch;
+    });
   }
 
   it("liefert Session-Infos, Umgebung und Nachforderung der Übergabe", async () => {

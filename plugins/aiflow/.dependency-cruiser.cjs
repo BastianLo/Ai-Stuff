@@ -1,5 +1,5 @@
 /** Paketgrenzen aus PLAN.md, Kapitel 6.1 */
-const pkg = (n) => `^packages/${n}/`;
+const pkg = (n) => `^packages/${n}/src/`; // Regeln gelten für Quellcode; Tests dürfen testkit nutzen
 const forbid = (name, from, to) => ({ name, severity: "error", from: { path: from }, to: { path: to } });
 module.exports = {
   forbidden: [

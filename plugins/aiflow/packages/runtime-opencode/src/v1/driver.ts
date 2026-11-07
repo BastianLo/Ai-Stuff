@@ -1,4 +1,4 @@
-import { AiflowError, splitModelRef, type JsonSchema, type PermissionRule } from "@aiflow/core";
+import { AiflowError, splitModelRef, type PermissionRule } from "@aiflow/core";
 import type { RuntimeCapabilities, StepActivity } from "@aiflow/engine";
 import type { CreateSessionOptions, ModelInfo, OpencodeDriver, RunOptions, RunResult, SessionActivity } from "../common/driver.js";
 import { toV1Rules } from "../common/permissions.js";
@@ -74,7 +74,7 @@ export class V1Driver implements OpencodeDriver {
             parts: [{ type: "text", text: o.text }],
             ...(model ? { model: { providerID: model.providerID, modelID: model.modelID } } : {}),
             ...(o.model?.variant ? { variant: o.model.variant } : {}),
-            ...(o.format ? { format: { type: "json_schema", schema: o.format as JsonSchema, retryCount: 2 } } : {}),
+            ...(o.format ? { format: { type: "json_schema", schema: o.format, retryCount: 2 } } : {}),
           },
           { signal },
         ),

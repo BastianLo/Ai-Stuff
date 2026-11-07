@@ -68,13 +68,15 @@ export class WorkerHooks {
   }
 
   async progress(sessionId: string, input: unknown): Promise<string> {
-    const message = typeof input === "object" && input !== null ? String((input as { message?: unknown }).message ?? "") : "";
+    const raw = typeof input === "object" && input !== null ? (input as { message?: unknown }).message : undefined;
+    const message = typeof raw === "string" ? raw : "";
     await this.api.progress(sessionId, message);
     return "ok";
   }
 
   async context(sessionId: string, input: unknown): Promise<string> {
-    const query = typeof input === "object" && input !== null ? String((input as { query?: unknown }).query ?? "") : "";
+    const raw = typeof input === "object" && input !== null ? (input as { query?: unknown }).query : undefined;
+    const query = typeof raw === "string" ? raw : "";
     return this.api.context(sessionId, query);
   }
 }

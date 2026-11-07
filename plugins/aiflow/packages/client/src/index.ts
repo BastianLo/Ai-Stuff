@@ -201,6 +201,7 @@ export class AiflowClient {
   createLogin = (project?: string) => this.request<{ url: string }>("POST", "/api/login-links", { project });
 
   /** Abonniert einen SSE-Endpunkt. Verbindet nach Abbrüchen neu (mit Last-Event-ID). */
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- T ist der Ereignistyp des Streams
   subscribe<T>(path: string, onEvent: (event: T, id?: string) => void, signal: AbortSignal): Promise<void> {
     return streamSse(this.fetchImpl, `${this.baseUrl}${path}`, this.headers(), this.options.credentials, onEvent, signal);
   }
@@ -210,6 +211,7 @@ export class AiflowClient {
     this.subscribe<GlobalEvent>(`/api/events${project ? `?project=${encodeURIComponent(project)}` : ""}`, onEvent, signal);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- T ist der Ereignistyp des Streams
 async function streamSse<T>(
   fetchImpl: typeof fetch,
   url: string,

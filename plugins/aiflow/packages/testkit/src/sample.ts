@@ -15,7 +15,7 @@ export function sampleFromSchema(schema: JsonSchema, hints: Record<string, unkno
     case "array":
       return [];
     case "string":
-      return key ? `${key}` : "text";
+      return key ? key : "text";
     case "integer":
     case "number":
       return 0;

@@ -26,9 +26,9 @@ export class FsDocumentStore implements DocumentStore {
 
   async read(runId: string, name: string): Promise<string> {
     try {
-      return Promise.resolve(readFileSync(this.path(runId, name), "utf8"));
+      return readFileSync(this.path(runId, name), "utf8");
     } catch {
-      return Promise.resolve("");
+      return "";
     }
   }
 
@@ -52,9 +52,9 @@ export class FsDocumentStore implements DocumentStore {
 
   async versions(runId: string, name: string): Promise<DocumentVersion[]> {
     try {
-      return Promise.resolve(JSON.parse(readFileSync(this.versionFile(runId, name), "utf8")) as DocumentVersion[]);
+      return JSON.parse(readFileSync(this.versionFile(runId, name), "utf8")) as DocumentVersion[];
     } catch {
-      return Promise.resolve([]);
+      return [];
     }
   }
 }

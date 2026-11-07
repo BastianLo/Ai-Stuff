@@ -6,5 +6,5 @@ import type { V1Client } from "./driver.js";
 export function createV1Client(baseUrl: string, password: string): V1Client {
   const client = createOpencodeClient({ baseUrl, headers: { authorization: basicAuth(password) } });
   // Der generierte Client hat dieselben Methoden mit präziseren Typen; die schmale Schnittstelle genügt dem Treiber.
-  return client as unknown as V1Client;
+  return client;
 }

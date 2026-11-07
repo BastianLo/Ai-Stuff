@@ -9,17 +9,9 @@ import type {
   PermissionRule,
   RunEvent,
 } from "@aiflow/core";
-import type { RunState } from "./state.js";
+import type { RunState, WorkspaceRef } from "./state.js";
 
-/** Arbeitsverzeichnis eines Tokens (in der Regel ein git worktree). */
-export interface WorkspaceRef {
-  id: string;
-  path: string;
-  /** Aktueller Commit */
-  head: string;
-  /** Basis-Commit des Runs */
-  base: string;
-}
+export type { WorkspaceRef } from "./state.js";
 
 export interface WorkspaceManager {
   prepare(runId: string, projectDir: string, base: string): Promise<WorkspaceRef>;

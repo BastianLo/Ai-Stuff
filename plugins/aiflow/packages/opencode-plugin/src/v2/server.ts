@@ -36,15 +36,15 @@ async function setupWorker(ctx: Context, hooks: WorkerHooks): Promise<() => void
   await ctx.session.hook("context", async (event) => {
     const info = await hooks.info(event.sessionID);
     if (!info) {
-      for (const name of WORKER_TOOL_NAMES) delete event.tools[name];
+      for (const name of WORKER_TOOL_NAMES) Reflect.deleteProperty(event.tools, name);
       return;
     }
     event.system.unshift({ type: "text", text: info.systemPrompt });
     const handoff = event.tools[HANDOFF_TOOL.name];
-    if (handoff) handoff.input = info.handoffSchema as typeof handoff.input;
+    if (handoff) handoff.input = info.handoffSchema;
     const delegate = event.tools[DELEGATE_TOOL.name];
-    if (!info.delegation) delete event.tools[DELEGATE_TOOL.name];
-    else if (delegate) delegate.input = delegateSchema(info.delegation.allowed.map((a) => a.id)) as typeof delegate.input;
+    if (!info.delegation) Reflect.deleteProperty(event.tools, DELEGATE_TOOL.name);
+    else if (delegate) delegate.input = delegateSchema(info.delegation.allowed.map((a) => a.id));
     if (info.temperature !== undefined) event.options.temperature = info.temperature;
     if (info.topP !== undefined) event.options.topP = info.topP;
   });
@@ -112,11 +112,9 @@ async function setupBridge(ctx: Context): Promise<() => void> {
     });
   }
 
-  bridge.watch(async (event) => {
-    if (event.type === "definitions.changed" && event.kind === "workflows") {
-      await bridge.refreshWorkflows();
-      await ctx.command.reload();
-    }
+  bridge.watch((event) => {
+    if (event.type !== "definitions.changed" || event.kind !== "workflows") return;
+    void bridge.refreshWorkflows().then(() => ctx.command.reload());
   }, stop.signal);
   return () => stop.abort();
 }

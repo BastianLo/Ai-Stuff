@@ -30,12 +30,12 @@ function codes(input: Parameters<typeof wf>[0]): string[] {
 }
 
 const minimal = {
-  nodes: { start: { type: "start" }, work: { type: "agent", agent: "implementer" }, done: { type: "end" } },
+  nodes: { start: { type: "start" as const }, work: { type: "agent" as const, agent: "implementer" }, done: { type: "end" as const } },
   edges: [
     { from: "start", to: "work" },
     { from: "work", to: "done" },
   ],
-} as const;
+};
 
 describe("Beispiel-Workflows", () => {
   it("lädt alle Beispiele", () => {

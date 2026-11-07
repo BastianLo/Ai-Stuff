@@ -52,7 +52,7 @@ import type {
   WorkspaceRef,
 } from "./ports.js";
 import { mapLimit, Semaphore } from "./semaphore.js";
-import { activeTokens, lastStepOf, type Candidate, type ForkState, type Inbound, type RunSpec, type RunState, type Token } from "./state.js";
+import { activeTokens, lastStepOf, promptText, type Candidate, type ForkState, type Inbound, type RunSpec, type RunState, type Token } from "./state.js";
 
 interface NodeResult {
   port: string;
@@ -109,6 +109,13 @@ export class Engine {
 
   get(runId: string): RunState | undefined {
     return this.runs.get(runId)?.state;
+  }
+
+  /** Entfernt einen beendeten Run aus dem Speicher (z. B. nach dem Löschen). */
+  forget(runId: string): void {
+    const state = this.runs.get(runId)?.state;
+    if (state && !TERMINAL_RUN_STATUSES.includes(state.status)) throw new AiflowError("INVALID_STATE", "Laufende Runs können nicht entfernt werden.");
+    this.runs.delete(runId);
   }
 
   list(): RunState[] {
@@ -413,7 +420,7 @@ class RunController {
         }
         throw new CancelledError();
       }
-      return this.failStep(token, step, error);
+      return await this.failStep(token, step, error);
     } finally {
       this.aborts.delete(step.id);
     }
@@ -519,7 +526,7 @@ class RunController {
     if (feedback) inbound.feedback = feedback;
 
     if (e.resetLoopCounters) {
-      for (const other of this.graph.edges) if (other.edge.loop && other.to === edge.to) this.state.edgeCounts[other.key] = 0;
+      for (const other of this.graph.edges) if (other.edge.loop && other.to === edge.to && other.key !== edge.key) this.state.edgeCounts[other.key] = 0;
     }
     if (e.loop) {
       const count = this.state.edgeCounts[edge.key] ?? 0;
@@ -730,7 +737,7 @@ class RunController {
       nodeLabel: step.label,
       visit: step.visit,
       ...(token.inbound.loop ? { loop: token.inbound.loop } : {}),
-      userPrompt: String(this.state.spec.input.prompt ?? ""),
+      userPrompt: promptText(this.state.spec.input),
       task: node.instructions ? renderTemplate(node.instructions, this.contextData(), { strict: false }) : agent.description,
       include,
       journal: this.journal(),
@@ -1105,7 +1112,7 @@ class RunController {
         timeoutMs: parseDuration(settings.timeoutPerAgent),
         nodeType: "subagent",
         wave,
-        label: `${this.agent(task.agent).name}`,
+        label: this.agent(task.agent).name,
         signal,
       });
       if (outcome.workspace) subWorkspaces.push(outcome.workspace);
@@ -1168,7 +1175,7 @@ class RunController {
       : [];
     const handoffSchema = buildHandoffSchema({ output: agent.output });
     const promptParts = [task];
-    if (o.includePrompt) promptParts.push(`## Gesamtauftrag (zur Einordnung)\n${String(this.state.spec.input.prompt ?? "")}`);
+    if (o.includePrompt) promptParts.push(`## Gesamtauftrag (zur Einordnung)\n${promptText(this.state.spec.input)}`);
     if (o.includeGoal && this.workflow.description) promptParts.push(`## Ziel des Workflows\n${this.workflow.description}`);
     if (grants.length > 0) promptParts.push(`## Dokumente (nur lesen)\n${grants.map((g) => `- ${g.name}: ${g.path}`).join("\n")}`);
     promptParts.push(`## Arbeitsverzeichnis\n${workspace.path} (${o.isolate ? "eigener Workspace, schreibbar" : "nur lesen"})`);
@@ -1399,7 +1406,6 @@ class RunController {
   }
 
   private firstNodeOfBranch(fork: ForkState, tokenId: string): string | undefined {
-    void tokenId;
     const arrival = fork.arrivals.find((a) => a.tokenId === tokenId);
     if (!arrival) return undefined;
     const edges = this.graph.out(fork.fromNode).filter((e) => !e.edge.loop);
@@ -1513,7 +1519,7 @@ class RunController {
   }
 
   private defaultReport(fileCount: number): string {
-    const lines = [`# ${this.workflow.name}`, "", `**Auftrag:** ${String(this.state.spec.input.prompt ?? "")}`, "", "## Ablauf"];
+    const lines = [`# ${this.workflow.name}`, "", `**Auftrag:** ${promptText(this.state.spec.input)}`, "", "## Ablauf"];
     for (const e of this.journal()) lines.push(`- **${e.label}**: ${e.summary}${e.port && e.port !== "next" ? ` → ${e.port}` : ""}`);
     lines.push("", `**Geänderte Dateien:** ${fileCount}`);
     return lines.join("\n");
@@ -1626,7 +1632,7 @@ class RunController {
     }
     const docs: Record<string, unknown> = {};
     for (const name of Object.keys(this.workflow.documents)) docs[name] = { path: this.deps.documents.path(this.state.id, name) };
-    const prompt = String(this.state.spec.input.prompt ?? "");
+    const prompt = promptText(this.state.spec.input);
     return {
       input: this.state.spec.input,
       vars: this.workflow.variables,

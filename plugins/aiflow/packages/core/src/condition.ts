@@ -25,10 +25,8 @@ export function evaluateCondition(rule: JsonLogic, data: unknown): unknown {
       return value === undefined ? ev(1) : value;
     }
     case "==":
-      // eslint-disable-next-line eqeqeq -- JSON-Logic-Semantik
       return ev(0) == ev(1);
     case "!=":
-      // eslint-disable-next-line eqeqeq -- JSON-Logic-Semantik
       return ev(0) != ev(1);
     case "===":
       return ev(0) === ev(1);
@@ -113,7 +111,7 @@ export function conditionVariables(rule: JsonLogic): string[] {
   const result: string[] = [];
   for (const [op, args] of Object.entries(rule as Record<string, unknown>)) {
     if (op === "var") {
-      const first = Array.isArray(args) ? args[0] : args;
+      const first: unknown = Array.isArray(args) ? (args as unknown[])[0] : args;
       if (typeof first === "string") result.push(first);
     } else result.push(...conditionVariables(args));
   }

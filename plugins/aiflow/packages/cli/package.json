@@ -15,7 +15,8 @@
     "@aiflow/core": "workspace:*",
     "@aiflow/client": "workspace:*",
     "@aiflow/server": "workspace:*",
-    "commander": "^15.1.0"
+    "commander": "^15.1.0",
+    "yaml": "^2.9.1"
   },
   "bin": {
     "aiflow": "./dist/index.js"

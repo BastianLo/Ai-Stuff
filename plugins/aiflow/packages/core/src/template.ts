@@ -1,7 +1,7 @@
 import { AiflowError } from "./errors.js";
 import { getPath } from "./util.js";
 
-const TOKEN = /\{\{\s*([a-zA-Z0-9_.\-]+)\s*\}\}/g;
+const TOKEN = /\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g;
 
 /** Alle Variablenpfade in einem Template. */
 export function templateVariables(template: string): string[] {

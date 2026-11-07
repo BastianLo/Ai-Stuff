@@ -1,0 +1,31 @@
+name: AiFlow
+
+on:
+  push:
+    paths: ["plugins/aiflow/**", ".github/workflows/aiflow.yml"]
+  pull_request:
+    paths: ["plugins/aiflow/**", ".github/workflows/aiflow.yml"]
+
+defaults:
+  run:
+    working-directory: plugins/aiflow
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: plugins/aiflow/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: git config --global user.email ci@example.com && git config --global user.name CI
+      - run: pnpm check
+      - run: pnpm --filter @aiflow/web build
+      - run: npx playwright install --with-deps chromium
+      - run: pnpm test:e2e
