@@ -104,6 +104,7 @@ Das Ausführungsmodell ruht auf vier Ideen:
 | **Worker** | Der von AiFlow gestartete `opencode serve`-Prozess (v1 oder v2), in dem die Agenten-Sessions laufen. |
 | **opencode-Plugin** | Das AiFlow-Paket für opencode v1 und v2. Bridge-Rolle in der opencode-Instanz des Nutzers, Worker-Rolle im Worker. |
 | **Treiber** | Versionsspezifischer Teil des Runtime-Adapters (v1 oder v2), der das versionsneutrale AiFlow-Modell in die jeweilige opencode-API übersetzt. |
+| **Sub-Agent** | Agent, den ein Agent-Knoten zur Laufzeit startet, um Teilaufgaben zu delegieren (7.16). Läuft als Unter-Schritt dieses Knotens. |
 
 ---
 
@@ -118,6 +119,7 @@ Diese Punkte sind gegenüber den ursprünglichen Ideen hinzugekommen oder präzi
 | **Bedingungs-Knoten** (regelbasiert) zusätzlich zur Agent-Entscheidung | Wenn eine Entscheidung objektiv prüfbar ist, ist sie deterministisch und braucht kein LLM. |
 | **Skript-Knoten** (Tests, Lint, Typecheck, Build) | Harte Qualitäts-Gates sind zuverlässiger als LLM-Urteile. Das ist der wichtigste Hebel für Codequalität. |
 | **Für-jedes-Knoten** (dynamische Parallelisierung) | Der Planner erzeugt eine Aufgabenliste, und für jede Aufgabe läuft ein Implementierungs-Zweig. |
+| **Sub-Agenten** (dynamische Delegation in Wellen) | Für Recherche- und Prüfaufgaben, deren Umfang erst zur Laufzeit klar wird. Ein Orchestrator bestimmt Anzahl und Art der Helfer selbst, innerhalb fester Limits. |
 | **Join-Strategien**: alle, erster (Race), n von m; Abstimmung mit Mehrheit, einstimmig oder Veto | Deckt „3 Reviewer → gemeinsame Entscheidung“ deterministisch ab. |
 | **Schleifen-Limits mit Eskalationsziel**, **Fehler-Ports** | Verhindert Endlosschleifen. Fehler werden zu modellierbaren Pfaden. |
 | **Mensch-Knoten** sowie Weiterleitung von Agent-Rückfragen und Rechte-Anfragen | Human-in-the-Loop in TUI und Web-UI. |
@@ -491,6 +493,7 @@ classDiagram
 | **Verhalten** | Kontext-Modus (Standard) | `fresh` / `resume` / `fork` (siehe 7.9) |
 | | Retries | Bei Fehler, Timeout oder ungültiger Übergabe |
 | | Entscheidungs-Stimmen | n ≥ 1 (Self-Consistency, siehe 8.5) |
+| | Sub-Agenten (Standard) | Standardwerte für die Delegation (7.16), im Workflow pro Knoten überschreibbar |
 | **Dokumente** | Standard-Zugriffe | Vorschläge, im Workflow überschreibbar |
 | **Meta** | Scope, Version, Änderungsdatum | Versionierung über Inhalts-Hash |
 
@@ -502,7 +505,7 @@ classDiagram
 | Implementieren | Wie „Nur lesen“, zusätzlich `edit`: allow (nur im Workspace) und `shell`: allow mit Denylist (`git push*`, `git reset --hard*`, `git checkout*`, `rm -rf /*`, `sudo*` …). Unbekannte Netz-Tools: ask. |
 | Voll | Alles allow außer `subagent` und `git push*` |
 
-`external_directory` ist immer `deny`, mit Ausnahme des Dokument-Ordners des Runs und (nur lesend) der Kandidaten-Worktrees nach einem Join. AiFlow setzt diese Regeln in jeder Session explizit, denn v2 erlaubt `external_directory` standardmäßig. `subagent` (Sub-Agenten von opencode, in v1 `task`) ist standardmäßig aus, weil AiFlow orchestriert.
+`external_directory` ist immer `deny`, mit Ausnahme des Dokument-Ordners des Runs und (nur lesend) der Kandidaten-Worktrees nach einem Join. AiFlow setzt diese Regeln in jeder Session explizit, denn v2 erlaubt `external_directory` standardmäßig. `subagent` (Sub-Agenten von opencode, in v1 `task`) ist standardmäßig aus, weil AiFlow orchestriert. Delegation an weitere Agenten läuft stattdessen über AiFlows eigene Sub-Agenten (7.16).
 
 ### 7.3 Bausteine (Snippets)
 
@@ -531,6 +534,8 @@ Es gibt keine vorgegebenen Agenten. Eine Vorlagen-Galerie hilft aber beim Start.
 | Integrator / Merger | Führt parallele Ergebnisse zusammen und löst Konflikte |
 | Documenter / Writer | Schreibt Doku, Changelog, Commit- und PR-Text |
 | Researcher | Recherchiert (Web/MCP erlaubt), schreibt Notizen, nur lesen im Repo |
+| Recherche-Orchestrator | Zerlegt den Informationsbedarf in Teilfragen, delegiert sie in Wellen an Explorer (Delegation erzwungen) und fasst die Ergebnisse in `research.md` zusammen |
+| Explorer | Beantwortet eine eng umrissene Frage zu Code, Abhängigkeiten oder Doku, nur lesen. Ausgabe `findings[]` und `openQuestions[]` |
 
 ### 7.5 Workflow
 
@@ -554,7 +559,7 @@ Es gibt keine vorgegebenen Agenten. Eine Vorlagen-Galerie hilft aber beim Start.
 | Knoten | Zweck | Ausgangsports | Wichtigste Einstellungen |
 |---|---|---|---|
 | **Start** | Einstieg, nimmt Prompt und Parameter an | `weiter` | Eingabe-Formular |
-| **Agent** | Führt einen Agenten aus | `weiter` **oder** benutzerdefinierte Zweige; optional `fehler` | Agent-Referenz, Overrides (Modell, Zusatzanweisung), Zweige, Workspace, Dokumente, Kontext-Modus, Limits, Stimmen |
+| **Agent** | Führt einen Agenten aus | `weiter` **oder** benutzerdefinierte Zweige; optional `fehler` | Agent-Referenz, Overrides (Modell, Zusatzanweisung), Zweige, Workspace, Dokumente, Kontext-Modus, Limits, Stimmen, Sub-Agenten (7.16) |
 | **Bedingung** | Deterministische Verzweigung | Benannte Regeln + `sonst` | JSON-Logic-Regeln über den Run-Kontext |
 | **Skript** | Führt einen Befehl aus (Tests, Lint, Typecheck, Build, Formatter, Codegen) | `ok` / `fehlgeschlagen` oder eigene Regeln über Exit-Code und Ausgabe; optional `fehler` | Befehl (Template), Timeout, Umgebung, Kürzung der Ausgabe (Kopf und Ende) |
 | **Zusammenführung (Join)** | Wartet auf parallele Zweige und kombiniert sie | `weiter` oder Abstimmungsports (z. B. `approved` / `rejected`) | Warte-Strategie, Kombinations-Strategie, Workspace-Strategie (7.8) |
@@ -655,6 +660,7 @@ Es gibt keine vorgegebenen Agenten. Eine Vorlagen-Galerie hilft aber beim Start.
 | Workspace-Diff seit Run-Start: `none` / `stat` / `full` | `stat` |
 | Dokumente: Liste mit Pfad, Zweck und Recht; optional der Inhalt direkt eingebettet | Liste an |
 | Kandidaten (nach Join mit `candidates`) | an |
+| Ergebnisse der Sub-Agenten des Vorgängers: `none` / `summary` / `full` | `summary` |
 
 **Aufbau des Prompts:** Der Kontext-Assembler baut ihn deterministisch. Er wird als Event gespeichert und ist in der Run-Ansicht exakt einsehbar.
 
@@ -883,6 +889,62 @@ Ein vollständiges Workflow-Beispiel steht in [16.3](#163-multi-review-mit-veto-
 - **Ein Run speichert einen vollständigen Snapshot**: den Workflow, alle referenzierten Agenten, Bausteine und Vorlagen. Die History bleibt dadurch exakt, auch wenn Definitionen später geändert oder gelöscht werden.
 - „Erneut ausführen“ ist mit der damaligen oder der aktuellen Version möglich. Zusammen mit dem Run-Vergleich lassen sich Workflow-Versionen so A/B-testen.
 
+### 7.16 Sub-Agenten (dynamische Delegation)
+
+Manche Aufgaben lassen sich nicht vorab als Graph zerlegen. Wie viel Recherche ein Feature braucht, weiß erst der Agent, der sich damit beschäftigt. Dafür kann ein Agent-Knoten **Sub-Agenten** starten. Im Graphen bleibt der Knoten ein einzelner Schritt; die Sub-Agenten laufen als Unter-Schritte innerhalb dieses Schritts.
+
+**Ablauf in Wellen:**
+
+1. Der Agent, z. B. ein Recherche-Orchestrator, analysiert den Auftrag und delegiert eine **Welle** von Teilaufgaben. Jede Teilaufgabe nennt einen Agenten, einen Auftrag und das erwartete Ergebnis.
+2. AiFlow startet die Sub-Agenten bis zur maximalen Parallelität; weitere warten in einer Warteschlange. Sobald die Welle fertig ist, bekommt der Orchestrator alle Ergebnisse gesammelt zurück.
+3. Der Orchestrator wertet aus. Bleibt etwas unklar, startet er die nächste Welle. Sonst schließt er mit seiner Übergabe ab, und der Workflow geht weiter.
+
+```mermaid
+flowchart LR
+  S([Start]) --> O
+  subgraph RO["Knoten „Recherche“ · ein Schritt im Workflow"]
+    direction TB
+    O["Recherche-Orchestrator<br/>plant die nächste Welle"] -->|aiflow_delegate| W["Explorer A · Explorer B · Explorer C<br/>parallel, max. 4"]
+    W -->|Ergebnisse der Welle| Q{"Noch etwas unklar<br/>und Budget übrig?"}
+    Q -->|ja| O
+  end
+  Q -->|nein · Übergabe| P["Planner"]
+```
+
+**Einstellungen am Agent-Knoten.** Standardwerte lassen sich in der Agent-Definition hinterlegen; der Knoten überschreibt sie.
+
+| Einstellung | Bedeutung | Standard |
+|---|---|---|
+| Sub-Agenten aktiv | Darf dieser Knoten Sub-Agenten starten? | aus |
+| Erlaubte Agenten | Mehrfachauswahl aus der Bibliothek. Nur diese kann der Agent starten. Ihre Beschreibungen stehen in seinem Kontext, damit er weiß, wofür welcher Agent taugt. Der eigene Agent ist erlaubt, z. B. ein Verifier, der weitere Verifier startet. | – (Pflicht, wenn aktiv) |
+| Delegationsmodus | `optional`: Der Agent darf delegieren oder selbst arbeiten, z. B. ein Verifier, der große Prüfungen aufteilt und kleine selbst erledigt. `erzwungen`: Der Agent darf nicht selbst arbeiten. Seine Arbeits-Tools (Lesen und Suchen im Repo, Shell, Web, Schreiben) sind entzogen, und vor der Übergabe muss mindestens eine Delegation stattgefunden haben, z. B. beim Recherche-Orchestrator. Einzelne Tools lassen sich gezielt wieder freigeben, etwa `list` für einen Überblick über die Verzeichnisstruktur. | `optional` |
+| Max. parallele Sub-Agenten | Wie viele gleichzeitig laufen; weitere warten. Zusätzlich gilt das globale Session-Limit (8.8). | 4 |
+| Max. Sub-Agent-Runs | Gesamtbudget über alle Wellen dieses Schritts | 12 |
+| Max. Wellen | Optionales Limit für die Anzahl der Delegationsrunden | – |
+| Verschachtelungstiefe | Dürfen Sub-Agenten selbst Sub-Agenten starten? `0` = nein | 0 |
+| Workspace der Sub-Agenten | `read-only`: Sie teilen sich den Workspace des Knotens (Explorer, Verifier). `isolate`: eigene Worktrees; die Ergebnisse werden wie beim Join per `git-merge` oder `candidates` zurückgeführt (7.8). | `read-only` |
+| Dokument-Rechte der Sub-Agenten | Höchstens die Rechte des Knotens | lesen |
+| Kontext für Sub-Agenten | Was zusätzlich zur Teilaufgabe mitgeht: Auftrag des Nutzers, Workflow-Ziel, Dokumentliste | Auftrag + Dokumente |
+| Timeout je Sub-Agent | Danach wird der Sub-Agent abgebrochen und als `failed` gemeldet | 20 min |
+
+**Verhalten an den Grenzen:**
+
+- **Budget erschöpft:** Das Delegations-Tool antwortet mit einer klaren Meldung, z. B. „Budget erschöpft, schließe mit dem bisherigen Stand ab“. Der Orchestrator muss dann abschließen.
+- **Nicht erlaubter Agent:** Tool-Fehler mit der Liste der erlaubten Agenten.
+- **Sub-Agent scheitert:** Er erscheint mit Status `failed` und Grund im Ergebnis. Der Orchestrator entscheidet, ob er neu delegiert; der Knoten selbst scheitert dadurch nicht.
+- **Abbruch oder Timeout des Knotens** bricht alle Sub-Agenten ab.
+
+**Abgrenzung zum Für-jedes-Knoten:**
+
+| | Für jedes | Sub-Agenten |
+|---|---|---|
+| Wer bestimmt Anzahl und Art | Eine Liste aus einer strukturierten Ausgabe; ein fester Rumpf | Der Agent selbst zur Laufzeit, aus den erlaubten Agenten |
+| Runden | eine | beliebig viele Wellen bis zum Budget |
+| Im Graphen | Jeder Rumpf ist sichtbar, mit eigenen Knoten (Checks, Reviews …) | Ein Knoten mit aufklappbaren Unter-Schritten |
+| Typischer Einsatz | Teilaufgaben eines Plans mit eigener Prüf-Pipeline umsetzen | Recherche, Analyse, große Prüfungen aufteilen |
+
+**Warum nicht die Sub-Agenten von opencode?** opencode kann selbst Sub-Agenten starten (v1 `task`, v2 `subagent`). AiFlow nutzt das bewusst nicht. Erlaubte Agenten, Limits, Workspaces und Dokument-Rechte sollen in AiFlows Hand liegen. Jeder Sub-Agent soll in History, Run-Ansicht und TUI erscheinen und eine strukturierte Übergabe liefern. Und der Mechanismus soll auch mit anderen Runtimes funktionieren. Die opencode-Aktion `subagent` bzw. `task` bleibt deshalb gesperrt.
+
 ---
 
 ## 8. Ausführungs-Engine
@@ -944,6 +1006,8 @@ sequenceDiagram
 | Join-Abstimmung referenziert ein Feld, das im Ausgabe-Vertrag aller Zweige existiert | Fehler |
 | Template-Variablen existieren; Agent-, Baustein- und Sub-Workflow-Referenzen existieren; Sub-Workflows sind nicht rekursiv | Fehler |
 | Command-Name ist gültig und eindeutig | Fehler |
+| Sub-Agenten aktiv: erlaubte Agenten nicht leer und vorhanden; Budget ≥ Parallelität; bei `isolate` ist eine Rückführung (`git-merge` oder `candidates`) gesetzt | Fehler |
+| Sub-Agenten mit Verschachtelungstiefe > 1 | Warnung |
 | Agent ohne Schreibrecht steht vor einem Knoten mit Workspace-Modus `continue`, der Änderungen erwartet | Hinweis |
 
 Strukturierte Parallelität verhindert Deadlocks und verwaiste Tokens und hält die Join-Zuordnung eindeutig.
@@ -1043,6 +1107,20 @@ Hat der betroffene Knoten keinen `fehler`-Port, endet der Run mit `failed`. Die 
 | Ablauf | `token.forked`, `token.joined`, `token.cancelled`, `loop.iteration`, `loop.limit_reached` |
 | Interaktion | `input.requested`, `input.answered`, `question.forwarded`, `permission.forwarded` |
 | Abschluss | `review.decided`, `apply.completed`, `apply.conflict`, `branch.created`, `docs.exported` |
+| Sub-Agenten | `delegation.wave_started`, `delegation.wave_completed`, `delegation.budget_exhausted`, `substep.queued`, `substep.started`, `substep.completed`, `substep.failed` |
+
+### 8.13 Ausführung von Sub-Agenten
+
+- **Delegations-Tool `aiflow_delegate`:** Das Plugin stellt es in seiner Worker-Rolle bereit, aber nur in Sessions von Knoten mit aktiven Sub-Agenten.
+  - Eingabe: `{ tasks: [{ agent, task, expectedResult? }] }`. Das Feld `agent` ist ein `enum` der erlaubten Agenten.
+  - Der Aufruf startet eine Welle und **blockiert, bis alle Teilaufgaben fertig sind**. Rückgabe: je Teilaufgabe Status, Zusammenfassung und strukturierte Ausgabe des Sub-Agenten, dazu das verbleibende Budget.
+  - Bewusst ein blockierender Aufruf pro Welle statt einzelner Start- und Warte-Aufrufe: Für schnelle Modelle ist das robuster. Feinere Steuerung (`aiflow_spawn` + `aiflow_await`) ist eine spätere Erweiterung.
+  - Sichtbarkeit pro Session: v2 über den `context`-Hook (Tool und `enum` je Session), v1 über die `tools`-Map beim Prompt.
+- **Unter-Schritte:** Jeder Sub-Agent ist ein vollwertiger AiFlow-Schritt mit `parentStepId`. Er bekommt eine eigene Session, ein eigenes Kontext-Paket (Teilaufgabe plus konfigurierter Zusatzkontext), Rechte und Workspace nach den Knoten-Einstellungen, eine strukturierte Übergabe nach seinem Ausgabe-Vertrag und eigene Metriken.
+- **Limits setzt die Engine durch, nicht das Modell:** ein Semaphor pro Knoten für die Parallelität, Zähler für Budget und Wellen, Prüfung der Verschachtelungstiefe.
+- **Delegationszwang:** Session-Regeln entziehen die Arbeits-Tools. Die Nachprüfung (8.1, Schritt 4) verlangt mindestens eine Delegation, sonst wird nachgefordert.
+- **Lange Tool-Aufrufe:** Eine Welle kann viele Minuten dauern. Der Tool-Aufruf hält die Session des Orchestrators so lange offen; abgebrochen wird über das Abort-Signal des Tools. Wie sich v1 und v2 bei sehr langen Tool-Aufrufen verhalten, klärt Spike S10.
+- **Wiederaufnahme:** Abgeschlossene Unter-Schritte werden nie wiederholt. Startet der Orchestrator nach einem Absturz neu, stehen die bereits vorliegenden Ergebnisse in seinem Kontext („Bisherige Wellen“), und er plant ab dort weiter.
 
 ---
 
@@ -1092,6 +1170,7 @@ Die Logik liegt im gemeinsamen Kern; die Shells binden sie an die jeweilige API.
 | Übergabe erzwingen | – (übernimmt `format`) | `ctx.session.hook("experimental.idle")`: fehlt eine gültige Übergabe, wird sie per `ctx.session.synthetic` in derselben Ausführung nachgefordert |
 | Tools `aiflow_progress(message)`, `aiflow_context(query)` | `tool` (Helper `tool()`, Zod) | `ctx.tool.transform` (JSON Schema); Fortschritt zusätzlich über `context.progress` |
 | Tool `aiflow_handoff` | – | `ctx.tool.transform` |
+| Tool `aiflow_delegate` (nur bei aktiven Sub-Agenten, 8.13) | `tool`, freigegeben per `tools`-Map beim Prompt | `ctx.tool.transform`; Sichtbarkeit und `enum` der erlaubten Agenten per `context`-Hook |
 | Kommunikation mit dem Daemon | lokale HTTP-API mit Worker-Token | ebenso |
 
 Die Zuordnung Session → Schritt läuft über die Session-Metadaten und wird gecacht.
@@ -1173,6 +1252,17 @@ AiFlow · feature-review · 06:12
 • Triage → mittel („3 Module betroffen“)
 ```
 
+Knoten mit Sub-Agenten zeigen ihre Wellen eingerückt:
+
+```
+▶ Recherche-Orchestrator   Welle 2 · 3/5 fertig · Budget 7/15
+   ✔ Explorer: Auth-Modul           1:12
+   ✔ Explorer: E-Mail-Versand       0:58
+   ✔ Explorer: Token-Speicherung    1:30
+   ▶ Explorer: Rate-Limiting        0:41
+   ○ Explorer: Bestehende Tests
+```
+
 | Element | opencode v1 | opencode v2 |
 |---|---|---|
 | Panel in der Seitenleiste (siehe oben) | Slot `sidebar_content` | Slot `sidebar.content` |
@@ -1252,6 +1342,7 @@ Oben gibt es eine Projektauswahl (Scope „Global“ oder ein konkretes Projekt)
   - Zweige mit Beschreibung und Übergabe-Anweisung
   - Regel-Builder für Bedingungen
   - Template-Felder mit Autovervollständigung
+  - Bereich „Sub-Agenten“ am Agent-Knoten mit allen Einstellungen aus 7.16
 - **Workflow-Einstellungen:** Allgemein (Name, Command-Name, Beschreibung) · Eingaben · Variablen · Dokumente + **Zugriffs-Matrix** · Workspace (Basis, Setup-Befehl) · Limits · Abschluss · Benachrichtigungen.
 - **Live-Validierung:** Das Probleme-Panel zeigt alle Regeln aus 8.3. Ein Klick springt zum betroffenen Element. Speichern ist auch mit Fehlern möglich (Entwurf), Starten nicht.
 - **Kopfleiste:** Speichern · Validieren · **Testlauf** · Starten (mit Prompt-Dialog) · Versionen · Export/Import · Auto-Layout.
@@ -1266,6 +1357,7 @@ Der Testlauf nutzt dieselbe Engine mit einer Simulations-Runtime. Agenten werden
 - **Graph** (read-only Canvas):
   - Live-Status je Knoten: wartend, läuft, fertig, Fehler, übersprungen.
   - Animierte aktive Kanten, gewählte Zweige hervorgehoben, Durchlaufzähler an Rückkanten (z. B. „2/3“).
+  - Knoten mit Sub-Agenten zeigen Welle, Fortschritt und Budget (z. B. „Welle 2 · 3/5 · 7/15“) und lassen sich zu einem Baum der Unter-Schritte aufklappen. Die Zeitleiste zeigt Unter-Schritte verschachtelt.
 - **Zeitleiste** (Gantt) für parallele Zweige.
 - **Schritt-Detail** (Seitenpanel):
   - Eingabe: exakter Prompt und Kontext-Paket
@@ -1602,6 +1694,7 @@ Umfang: S = klein, M = mittel, L = groß (relativ, für die Planung der Agenten-
 - Testlauf und Simulation (inkl. gespeicherter Simulationsskripte als Regressionstests)
 - Agent-Playground
 - Stagnationserkennung
+- Sub-Agenten (7.16, 8.13): Delegations-Tool, Unter-Schritte, Limits, Delegationszwang, Wiederaufnahme, Anzeige in Run-Ansicht und TUI. Kann vorgezogen werden, weil es fast nur Engine und Plugin betrifft.
 
 ### Phase 9 – Ausbau (fortlaufend)
 
@@ -1886,6 +1979,40 @@ flowchart LR
 - **Recherche → Entscheidungsvorlage** (Abschluss `none`): 3 Researcher parallel mit unterschiedlichen Quellen → Synthesizer → `decision.md` exportieren.
 - **Dokumentations-Sync:** Diff seit dem letzten Release → Documenter → Reviewer → Ende als Branch.
 
+### 16.7 Feature mit Recherche-Orchestrator
+
+Ein Recherche-Orchestrator sammelt vor der Planung alle nötigen Informationen. Er delegiert an spezialisierte Explorer, so viele Wellen wie nötig, und schreibt das Ergebnis nach `research.md`. Danach geht es z. B. mit dem Workflow aus 16.3 als Sub-Workflow weiter. Der zweite Knoten im Beispiel ist ein Verifier, der große Prüfungen auf weitere Verifier aufteilen darf und kleine selbst erledigt.
+
+```yaml
+nodes:
+  research:
+    type: agent
+    agent: research-orchestrator
+    documents: { research.md: write-required }
+    subagents:
+      enabled: true
+      allowed: [code-explorer, docs-explorer, dependency-explorer]
+      mode: enforced              # optional | enforced
+      maxParallel: 4
+      maxRuns: 15
+      maxWaves: 4
+      depth: 0
+      workspace: read-only
+      documents: read
+      context: [input.prompt, documents]
+      timeoutPerAgent: 20m
+
+  verify:
+    type: agent
+    agent: verifier
+    subagents:
+      enabled: true
+      allowed: [verifier]         # darf weitere Verifier starten
+      mode: optional              # kleine Prüfungen erledigt er selbst
+      maxParallel: 3
+      maxRuns: 6
+```
+
 ---
 
 ## 17. Risiken und Spikes
@@ -1900,6 +2027,7 @@ flowchart LR
 | Ressourcenlast bei vielen Worktrees (Abhängigkeiten, Plattenplatz, unter v1 auch LSP-Prozesse) | Setup-Cache (pnpm-Store), Parallelitätslimits, unter v1 LSP für Worker-Sessions begrenzen, Aufräum-Jobs, Speicheranzeige in `doctor` |
 | Agenten umgehen Dateirechte über `bash` | Dreistufige Durchsetzung plus Integritätsprüfung, Grenzprüfung des Diffs, Bash-Allowlist-Presets |
 | Endlosschleifen und lange Läufe | Pflicht-Limits, Run-Budgets, Stagnationserkennung, Eskalation an den Menschen |
+| Ausufernde Delegation (zu viele Sub-Agenten, zu viele Wellen) | Budget, Parallelitäts- und Wellenlimit pro Knoten, Verschachtelungstiefe standardmäßig 0, globale Run-Budgets; die Engine setzt alle Limits durch |
 | Merge-Konflikte bei der Übernahme | Basis-Snapshot, 3-Wege-Merge, Konfliktanzeige, Branch-Export als Ausweg |
 | Daemon- oder Worker-Absturz während eines Runs | Event-Sourcing, Checkpoints, Wiederaufnahme, Worker-Neustart mit Schritt-Retry |
 | Angriff über den lokalen HTTP-Server | Token, Host- und Origin-Prüfung, nur localhost, Workspace-Trust |
@@ -1919,6 +2047,7 @@ flowchart LR
 | S7 | v1 | `command.execute.before`: Rohargumente abfangen und den LLM-Aufruf vermeiden oder minimieren | 6 |
 | S8 | v1 / v2 | Kombinierter Einstiegspunkt lädt in v1 (≥ 1.18.29) und v2; keine Konflikte durch versionsspezifische Imports oder `effect` | 3 |
 | S9 | v2 | Läuft `@opencode/sdk` (eingebetteter Host) unter Node oder nur unter Bun? Lohnt sich der eingebettete Worker? | 9 |
+| S10 | v1 / v2 | Blockierende Plugin-Tool-Aufrufe über viele Minuten (`aiflow_delegate`): Timeouts, Abbruch, Verhalten der Session und des Modells danach | 8 |
 
 ---
 
