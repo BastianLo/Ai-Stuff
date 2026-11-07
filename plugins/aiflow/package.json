@@ -1,0 +1,28 @@
+{
+  "name": "aiflow-monorepo",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": { "node": ">=22.12" },
+  "scripts": {
+    "build": "tsc -b packages/tsconfig.build.json && pnpm --filter @aiflow/web build",
+    "typecheck": "tsc -b packages/tsconfig.build.json && tsc -p tsconfig.check.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:e2e": "playwright test -c e2e/playwright.config.ts",
+    "depcruise": "depcruise packages --config .dependency-cruiser.cjs",
+    "check": "pnpm typecheck && pnpm lint && pnpm depcruise && pnpm test",
+    "dev:web": "pnpm --filter @aiflow/web dev",
+    "aiflow": "node packages/cli/dist/index.js"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.0",
+    "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "^5.1.0",
+    "dependency-cruiser": "^18.7.2",
+    "eslint": "^10.14.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.1.0"
+  }
+}

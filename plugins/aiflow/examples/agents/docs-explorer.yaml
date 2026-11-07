@@ -1,0 +1,16 @@
+schema: aiflow/agent@1
+id: docs-explorer
+name: Doku-Explorer
+description: Beantwortet eine Frage anhand von Doku, README und Abhängigkeiten.
+tags: [recherche]
+appearance: { icon: search, color: "#6366f1" }
+identity: Du beantwortest genau eine Frage, gründlich und mit Belegen (Dateien, Zeilen).
+permissions: { preset: read-only }
+output:
+  type: json
+  schema:
+    type: object
+    required: [findings]
+    properties:
+      findings: { type: array, items: { type: string } }
+      openQuestions: { type: array, items: { type: string } }

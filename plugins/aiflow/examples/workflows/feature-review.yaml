@@ -1,0 +1,113 @@
+schema: aiflow/workflow@1
+id: feature-review
+name: Feature mit Multi-Review
+command: feature-review
+description: >
+  Plant und implementiert ein Feature, prüft es mit Typecheck, Lint und Tests
+  sowie drei spezialisierten Reviewern (Veto) und dokumentiert das Ergebnis.
+inputs:
+  prompt: { type: text, required: true, label: Auftrag }
+variables:
+  checkCommand: npm test
+settings:
+  workspace: { base: working-tree }
+  limits: { maxSteps: 60, maxDuration: 3h, maxParallelSessions: 4 }
+  finalize: review
+documents:
+  plan.md:
+    description: Umsetzungsplan mit Teilschritten und Akzeptanzkriterien
+    template: plan-template
+    requiredAtEnd: true
+    exportTo: docs/plans/{{run.date}}-{{run.slug}}.md
+  review.md:
+    description: Gesammelte Review-Befunde aller Reviewer
+nodes:
+  start: { type: start }
+  plan:
+    type: agent
+    agent: planner
+    documents: { plan.md: write-required }
+  implement:
+    type: agent
+    agent: implementer
+    contextMode: resume
+    documents: { plan.md: read, review.md: read }
+  checks:
+    type: script
+    label: Checks
+    command: "{{vars.checkCommand}}"
+    timeout: 15m
+    ports:
+      passed: { when: { "==": [{ var: exitCode }, 0] } }
+      failed: { else: true }
+  security:
+    type: agent
+    agent: security-reviewer
+    workspace: { mode: read-only }
+    documents: { plan.md: read, review.md: append }
+  standards:
+    type: agent
+    agent: standards-reviewer
+    workspace: { mode: read-only }
+    documents: { plan.md: read, review.md: append }
+  tests:
+    type: agent
+    agent: test-reviewer
+    workspace: { mode: read-only }
+    documents: { plan.md: read, review.md: append }
+  verdict:
+    type: join
+    label: Verdict
+    wait: all
+    combine: { strategy: vote, field: output.approved, rule: veto, ports: { "true": approved, "false": rejected } }
+    workspace: keep-base
+  document:
+    type: agent
+    agent: documenter
+    workspace: { mode: continue, writeScope: ["docs/**", "**/*.md"] }
+    documents: { plan.md: read }
+  escalate:
+    type: human
+    label: Wie weiter?
+    question: "Nach {{node.implement.visits}} Durchläufen gibt es weiterhin Probleme. Wie weiter?"
+    ports: [weiter-versuchen, so-uebernehmen, abbrechen]
+  done: { type: end, outcome: success, finalize: review }
+  cancelled: { type: end, outcome: cancelled, finalize: none }
+edges:
+  - { from: start, to: plan }
+  - from: plan
+    to: implement
+    handoff: { instruction: "Kurze Zusammenfassung; alle Details stehen in plan.md." }
+  - { from: implement, to: checks }
+  - from: checks.failed
+    to: implement
+    loop: { max: 3, onExceeded: escalate }
+    handoff: { include: [script.output], instruction: "Behebe die fehlschlagenden Checks. Ändere keine Tests, nur um sie grün zu bekommen." }
+  - { from: checks.passed, to: security }
+  - { from: checks.passed, to: standards }
+  - { from: checks.passed, to: tests }
+  - { from: security, to: verdict }
+  - { from: standards, to: verdict }
+  - { from: tests, to: verdict }
+  - from: verdict.rejected
+    to: implement
+    loop: { max: 3, onExceeded: escalate }
+    handoff: { include: [join.feedback], instruction: "Arbeite alle Befunde mit Schweregrad ≥ medium ab; begründe abgelehnte Befunde." }
+  - { from: verdict.approved, to: document }
+  - { from: document, to: done }
+  - { from: escalate.weiter-versuchen, to: implement, resetLoopCounters: true, loop: { max: 1, onExceeded: cancelled } }
+  - { from: escalate.so-uebernehmen, to: document }
+  - { from: escalate.abbrechen, to: cancelled }
+layout:
+  start: [0, 200]
+  plan: [180, 200]
+  implement: [380, 200]
+  checks: [580, 200]
+  security: [800, 60]
+  standards: [800, 200]
+  tests: [800, 340]
+  verdict: [1020, 200]
+  document: [1220, 120]
+  done: [1420, 120]
+  escalate: [800, 480]
+  cancelled: [1020, 480]

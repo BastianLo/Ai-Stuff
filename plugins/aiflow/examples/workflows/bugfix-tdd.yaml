@@ -1,0 +1,46 @@
+schema: aiflow/workflow@1
+id: bugfix-tdd
+name: Bugfix mit Reproduktion
+command: bugfix
+description: Erst ein fehlschlagender Test, dann der Fix, dann Review.
+variables:
+  testCommand: npm test
+documents:
+  bug.md: { description: Analyse des Fehlers und Reproduktion, requiredAtEnd: true }
+nodes:
+  start: { type: start }
+  analyse: { type: agent, agent: analyst, documents: { bug.md: write-required } }
+  reproduce:
+    type: script
+    label: Test muss fehlschlagen
+    command: "{{vars.testCommand}}"
+    ports:
+      rot: { when: { "!=": [{ var: exitCode }, 0] } }
+      gruen: { else: true }
+  fix: { type: agent, agent: fixer, documents: { bug.md: read } }
+  tests:
+    type: script
+    label: Alle Tests
+    command: "{{vars.testCommand}}"
+  review:
+    type: agent
+    agent: reviewer
+    workspace: { mode: read-only }
+    ports:
+      approved: { description: "Fix ist korrekt und minimal" }
+      rejected: { description: "Fix ist falsch, unvollständig oder zu breit" }
+  human: { type: human, question: "Der Fix bekommt die Tests nicht grün. Wie weiter?", ports: [uebernehmen, abbrechen] }
+  done: { type: end, finalize: review }
+  cancelled: { type: end, outcome: cancelled }
+edges:
+  - { from: start, to: analyse }
+  - { from: analyse, to: reproduce }
+  - { from: reproduce.gruen, to: analyse, loop: { max: 2, onExceeded: human }, handoff: { instruction: "Der Test reproduziert den Fehler nicht – er ist grün." } }
+  - { from: reproduce.rot, to: fix }
+  - { from: fix, to: tests }
+  - { from: tests.failed, to: fix, loop: { max: 3, onExceeded: human }, handoff: { include: [script.output] } }
+  - { from: tests.passed, to: review }
+  - { from: review.rejected, to: fix, loop: { max: 2, onExceeded: human } }
+  - { from: review.approved, to: done }
+  - { from: human.uebernehmen, to: done }
+  - { from: human.abbrechen, to: cancelled }

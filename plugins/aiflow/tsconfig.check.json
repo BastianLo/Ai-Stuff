@@ -1,0 +1,53 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "baseUrl": ".",
+    "paths": {
+      "@aiflow/core": [
+        "packages/core/src/index.ts"
+      ],
+      "@aiflow/engine": [
+        "packages/engine/src/index.ts"
+      ],
+      "@aiflow/store": [
+        "packages/store/src/index.ts"
+      ],
+      "@aiflow/workspace-git": [
+        "packages/workspace-git/src/index.ts"
+      ],
+      "@aiflow/testkit": [
+        "packages/testkit/src/index.ts"
+      ],
+      "@aiflow/runtime-opencode": [
+        "packages/runtime-opencode/src/index.ts"
+      ],
+      "@aiflow/client": [
+        "packages/client/src/index.ts"
+      ],
+      "@aiflow/server": [
+        "packages/server/src/index.ts"
+      ],
+      "@aiflow/cli": [
+        "packages/cli/src/index.ts"
+      ],
+      "opencode-aiflow": [
+        "packages/opencode-plugin/src/index.ts"
+      ]
+    },
+    "rootDir": "."
+  },
+  "include": [
+    "packages/*/src/**/*.ts",
+    "packages/*/test/**/*.ts",
+    "vitest.config.ts"
+  ],
+  "exclude": [
+    "packages/web/**",
+    "**/dist/**",
+    "packages/opencode-plugin/src/**/tui*.tsx"
+  ]
+}

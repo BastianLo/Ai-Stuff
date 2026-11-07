@@ -1,0 +1,51 @@
+schema: aiflow/workflow@1
+id: big-feature
+name: Großes Feature
+command: big-feature
+description: Architektur, Plan mit Freigabe, Umsetzung je Teilaufgabe, Gesamtprüfung und Reviews.
+variables:
+  checkCommand: npm test
+documents:
+  architecture.md: { description: Architekturentwurf, requiredAtEnd: true }
+  plan.md: { description: Plan mit Teilaufgaben, requiredAtEnd: true }
+nodes:
+  start: { type: start }
+  architect: { type: agent, agent: architect, documents: { architecture.md: write-required } }
+  plan: { type: agent, agent: planner, documents: { plan.md: write-required, architecture.md: read } }
+  approve: { type: human, label: Plan freigeben?, question: "Bitte den Plan in plan.md prüfen.", ports: [freigegeben, aendern] }
+  tasks:
+    type: map
+    label: Für jede Teilaufgabe
+    items: node.plan.output.tasks
+    agent: implementer
+    task: "Setze diese Teilaufgabe um: {{item}}"
+    maxParallel: 3
+    workspace: isolate
+    merge: git-merge
+  integrate: { type: agent, agent: fixer, label: Integrator, instructions: "Löse die Merge-Konflikte sauber auf." }
+  checks: { type: script, label: Checks gesamt, command: "{{vars.checkCommand}}" }
+  fix: { type: agent, agent: fixer }
+  security: { type: agent, agent: security-reviewer, workspace: { mode: read-only } }
+  arch-review: { type: agent, agent: architecture-reviewer, workspace: { mode: read-only } }
+  verdict: { type: join, wait: all, combine: { strategy: vote, field: output.approved, rule: veto, ports: { "true": approved, "false": rejected } } }
+  document: { type: agent, agent: documenter }
+  done: { type: end, finalize: review }
+  failed: { type: end, outcome: failed }
+edges:
+  - { from: start, to: architect }
+  - { from: architect, to: plan }
+  - { from: plan, to: approve }
+  - { from: approve.aendern, to: plan, loop: { max: 3, onExceeded: failed } }
+  - { from: approve.freigegeben, to: tasks }
+  - { from: tasks.next, to: checks }
+  - { from: tasks.conflict, to: integrate }
+  - { from: integrate, to: checks }
+  - { from: checks.failed, to: fix }
+  - { from: fix, to: checks, loop: { max: 3, onExceeded: failed } }
+  - { from: checks.passed, to: security }
+  - { from: checks.passed, to: arch-review }
+  - { from: security, to: verdict }
+  - { from: arch-review, to: verdict }
+  - { from: verdict.rejected, to: fix, loop: { max: 2, onExceeded: failed } }
+  - { from: verdict.approved, to: document }
+  - { from: document, to: done }

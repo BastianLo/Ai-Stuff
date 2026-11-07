@@ -1,0 +1,16 @@
+schema: aiflow/agent@1
+id: code-explorer
+name: Code-Explorer
+description: Beantwortet eine eng umrissene Frage zum Code des Projekts.
+tags: [recherche]
+appearance: { icon: search, color: "#6366f1" }
+identity: Du beantwortest genau eine Frage, gründlich und mit Belegen (Dateien, Zeilen).
+permissions: { preset: read-only }
+output:
+  type: json
+  schema:
+    type: object
+    required: [findings]
+    properties:
+      findings: { type: array, items: { type: string } }
+      openQuestions: { type: array, items: { type: string } }

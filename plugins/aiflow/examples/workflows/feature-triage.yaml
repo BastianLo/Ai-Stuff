@@ -1,0 +1,46 @@
+schema: aiflow/workflow@1
+id: feature-triage
+name: Feature mit Größen-Triage
+command: feature
+description: Schätzt die Größe ein und wählt danach den passenden Ablauf.
+variables:
+  checkCommand: npm test
+nodes:
+  start: { type: start }
+  triage:
+    type: agent
+    agent: evaluator
+    decision: { votes: 3, fallback: mittel }
+    ports:
+      klein: { description: "≤ 2 Dateien, keine Schnittstellen- oder Datenmodelländerung, kein neues Modul" }
+      mittel: { description: "Mehrere Dateien oder Module, klar umrissen, keine neuen Abhängigkeiten" }
+      gross: { description: "Neue Module, Schnittstellen- oder Datenmodelländerungen, Migrationen" }
+  quick:
+    type: agent
+    agent: implementer
+    label: Implementer (klein)
+  quickchecks:
+    type: script
+    label: Checks
+    command: "{{vars.checkCommand}}"
+  medium: { type: subworkflow, workflow: feature-review, label: Feature mit Multi-Review }
+  architect: { type: agent, agent: architect }
+  large: { type: subworkflow, workflow: big-feature, label: Großes Feature }
+  applied: { type: end, outcome: success, finalize: apply }
+  reviewed: { type: end, outcome: success, finalize: review }
+  failed: { type: end, outcome: failed, finalize: none }
+edges:
+  - { from: start, to: triage }
+  - { from: triage.klein, to: quick }
+  - { from: quick, to: quickchecks }
+  - { from: quickchecks.passed, to: applied }
+  - { from: quickchecks.failed, to: quick, loop: { max: 2, onExceeded: failed } }
+  - { from: triage.mittel, to: medium }
+  - { from: triage.gross, to: architect }
+  - { from: architect, to: large }
+  - { from: medium.success, to: reviewed }
+  - { from: medium.rejected, to: failed }
+  - { from: medium.failed, to: failed }
+  - { from: large.success, to: reviewed }
+  - { from: large.rejected, to: failed }
+  - { from: large.failed, to: failed }

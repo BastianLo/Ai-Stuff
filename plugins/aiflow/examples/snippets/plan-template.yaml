@@ -1,0 +1,12 @@
+schema: aiflow/snippet@1
+id: plan-template
+name: Vorlage plan.md
+kind: document-template
+content: |
+  # Plan
+
+  ## Ziel
+
+  ## Teilschritte
+
+  ## Akzeptanzkriterien

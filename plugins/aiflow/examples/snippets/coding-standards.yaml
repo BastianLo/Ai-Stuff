@@ -1,0 +1,8 @@
+schema: aiflow/snippet@1
+id: coding-standards
+name: Coding-Standards
+description: Grundregeln für Code in diesem Projekt.
+content: |
+  - Kleine Funktionen mit sprechenden Namen.
+  - Keine stillen Fehler: Fehler behandeln oder weiterreichen.
+  - Jede Verhaltensänderung braucht einen Test.

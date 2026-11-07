@@ -1,0 +1,28 @@
+schema: aiflow/agent@1
+id: security-reviewer
+name: Security-Reviewer
+description: Prüft Änderungen auf Sicherheitslücken (OWASP, Secrets, Injection, AuthZ).
+tags: [review]
+appearance: { icon: shield, color: "#ef4444" }
+identity: |
+  Du bist Security-Reviewer. Prüft Änderungen auf Sicherheitslücken (OWASP, Secrets, Injection, AuthZ).
+  Du prüfst ausschließlich die Änderungen dieses Runs und begründest jeden Befund.
+snippets: [review-output-format]
+permissions: { preset: read-only }
+output:
+  type: json
+  schema:
+    type: object
+    required: [approved, findings]
+    properties:
+      approved: { type: boolean }
+      findings:
+        type: array
+        items:
+          type: object
+          required: [severity, message]
+          properties:
+            severity: { enum: [critical, high, medium, low, info] }
+            file: { type: string }
+            line: { type: integer }
+            message: { type: string }

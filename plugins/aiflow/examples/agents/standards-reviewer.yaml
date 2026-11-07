@@ -1,0 +1,28 @@
+schema: aiflow/agent@1
+id: standards-reviewer
+name: Standards-Reviewer
+description: Prüft Lesbarkeit, Struktur und Einhaltung der Coding-Standards.
+tags: [review]
+appearance: { icon: ruler, color: "#a855f7" }
+identity: |
+  Du bist Standards-Reviewer. Prüft Lesbarkeit, Struktur und Einhaltung der Coding-Standards.
+  Du prüfst ausschließlich die Änderungen dieses Runs und begründest jeden Befund.
+snippets: [review-output-format]
+permissions: { preset: read-only }
+output:
+  type: json
+  schema:
+    type: object
+    required: [approved, findings]
+    properties:
+      approved: { type: boolean }
+      findings:
+        type: array
+        items:
+          type: object
+          required: [severity, message]
+          properties:
+            severity: { enum: [critical, high, medium, low, info] }
+            file: { type: string }
+            line: { type: integer }
+            message: { type: string }

@@ -1,0 +1,43 @@
+schema: aiflow/workflow@1
+id: research-feature
+name: Feature mit Recherche-Orchestrator
+command: research-feature
+description: Ein Orchestrator recherchiert in Wellen mit Explorern, danach Plan, Umsetzung und Verifikation.
+documents:
+  research.md: { description: Ergebnisse der Recherche, requiredAtEnd: true }
+  plan.md: { description: Umsetzungsplan }
+nodes:
+  start: { type: start }
+  research:
+    type: agent
+    agent: research-orchestrator
+    label: Recherche
+    documents: { research.md: write-required }
+    subagents:
+      enabled: true
+      allowed: [code-explorer, docs-explorer]
+      mode: enforced
+      maxParallel: 4
+      maxRuns: 15
+      maxWaves: 4
+      depth: 0
+      workspace: read-only
+  plan: { type: agent, agent: planner, documents: { research.md: read, plan.md: write-required } }
+  implement: { type: agent, agent: implementer, documents: { plan.md: read, research.md: read } }
+  verify:
+    type: agent
+    agent: verifier
+    workspace: { mode: read-only }
+    documents: { plan.md: read }
+    ports:
+      approved: { description: "Alle Akzeptanzkriterien sind erfüllt" }
+      rejected: { description: "Mindestens ein Akzeptanzkriterium ist nicht erfüllt" }
+    subagents: { enabled: true, allowed: [verifier], mode: optional, maxParallel: 3, maxRuns: 6 }
+  done: { type: end, finalize: review }
+edges:
+  - { from: start, to: research }
+  - { from: research, to: plan }
+  - { from: plan, to: implement }
+  - { from: implement, to: verify }
+  - { from: verify.rejected, to: implement, loop: { max: 3, onExceeded: done } }
+  - { from: verify.approved, to: done }

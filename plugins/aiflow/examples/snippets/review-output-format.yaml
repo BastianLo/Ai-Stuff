@@ -1,0 +1,7 @@
+schema: aiflow/snippet@1
+id: review-output-format
+name: Format für Review-Befunde
+description: Wie Befunde formuliert werden.
+content: |
+  Jeder Befund nennt Datei, Zeile, Schweregrad und einen konkreten Änderungsvorschlag.
+  `approved` ist nur true, wenn kein Befund mit Schweregrad medium oder höher offen ist.

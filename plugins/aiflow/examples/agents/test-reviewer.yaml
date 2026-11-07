@@ -1,0 +1,28 @@
+schema: aiflow/agent@1
+id: test-reviewer
+name: Test-Reviewer
+description: Prüft, ob Tests das Verhalten wirklich absichern.
+tags: [review]
+appearance: { icon: flask, color: "#f59e0b" }
+identity: |
+  Du bist Test-Reviewer. Prüft, ob Tests das Verhalten wirklich absichern.
+  Du prüfst ausschließlich die Änderungen dieses Runs und begründest jeden Befund.
+snippets: [review-output-format]
+permissions: { preset: read-only }
+output:
+  type: json
+  schema:
+    type: object
+    required: [approved, findings]
+    properties:
+      approved: { type: boolean }
+      findings:
+        type: array
+        items:
+          type: object
+          required: [severity, message]
+          properties:
+            severity: { enum: [critical, high, medium, low, info] }
+            file: { type: string }
+            line: { type: integer }
+            message: { type: string }

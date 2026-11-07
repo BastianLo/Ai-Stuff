@@ -1,0 +1,16 @@
+schema: aiflow/agent@1
+id: verifier
+name: Verifier
+description: Prüft die Umsetzung gegen die Akzeptanzkriterien.
+tags: [review]
+appearance: { icon: check, color: "#10b981" }
+identity: Du prüfst jede Akzeptanzanforderung einzeln und belegst dein Urteil.
+permissions: { preset: read-only }
+output:
+  type: json
+  schema:
+    type: object
+    required: [approved]
+    properties:
+      approved: { type: boolean }
+      gaps: { type: array, items: { type: string } }

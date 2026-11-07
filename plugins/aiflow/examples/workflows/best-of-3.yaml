@@ -1,0 +1,48 @@
+schema: aiflow/workflow@1
+id: best-of-3
+name: Best-of-3-Implementierung
+command: best-of-3
+description: Drei Implementierungen parallel, ein Decider wählt die beste, danach Review.
+variables:
+  checkCommand: npm test
+documents:
+  plan.md: { description: Umsetzungsplan, requiredAtEnd: true }
+nodes:
+  start: { type: start }
+  plan: { type: agent, agent: planner, documents: { plan.md: write-required } }
+  impl-a: { type: agent, agent: implementer, label: Implementer A, workspace: { mode: isolate }, documents: { plan.md: read } }
+  impl-b: { type: agent, agent: implementer, label: Implementer B, workspace: { mode: isolate }, instructions: "Bevorzuge die einfachste mögliche Lösung.", documents: { plan.md: read } }
+  impl-c: { type: agent, agent: implementer, label: Implementer C, workspace: { mode: isolate }, instructions: "Bevorzuge eine besonders gut testbare Lösung.", documents: { plan.md: read } }
+  checks-a: { type: script, label: Checks A, command: "{{vars.checkCommand}}" }
+  checks-b: { type: script, label: Checks B, command: "{{vars.checkCommand}}" }
+  checks-c: { type: script, label: Checks C, command: "{{vars.checkCommand}}" }
+  pick: { type: join, label: Kandidaten, wait: all, workspace: candidates }
+  decide: { type: agent, agent: decider }
+  review:
+    type: agent
+    agent: reviewer
+    workspace: { mode: read-only }
+    ports:
+      approved: { description: "Keine Befunde mit Schweregrad medium oder höher" }
+      rejected: { description: "Mindestens ein Befund mit Schweregrad medium oder höher" }
+  fix: { type: agent, agent: fixer }
+  done: { type: end, finalize: review }
+edges:
+  - { from: start, to: plan }
+  - { from: plan, to: impl-a, workspace: isolate }
+  - { from: plan, to: impl-b, workspace: isolate }
+  - { from: plan, to: impl-c, workspace: isolate }
+  - { from: impl-a, to: checks-a }
+  - { from: impl-b, to: checks-b }
+  - { from: impl-c, to: checks-c }
+  - { from: checks-a.passed, to: pick }
+  - { from: checks-a.failed, to: pick }
+  - { from: checks-b.passed, to: pick }
+  - { from: checks-b.failed, to: pick }
+  - { from: checks-c.passed, to: pick }
+  - { from: checks-c.failed, to: pick }
+  - { from: pick, to: decide }
+  - { from: decide, to: review }
+  - { from: review.approved, to: done }
+  - { from: review.rejected, to: fix }
+  - { from: fix, to: review, loop: { max: 2, onExceeded: done } }

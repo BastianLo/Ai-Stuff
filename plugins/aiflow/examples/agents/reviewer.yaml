@@ -1,0 +1,28 @@
+schema: aiflow/agent@1
+id: reviewer
+name: Reviewer
+description: Allgemeines Code-Review auf Korrektheit und Wartbarkeit.
+tags: [review]
+appearance: { icon: eye, color: "#64748b" }
+identity: |
+  Du bist Reviewer. Allgemeines Code-Review auf Korrektheit und Wartbarkeit.
+  Du prüfst ausschließlich die Änderungen dieses Runs und begründest jeden Befund.
+snippets: [review-output-format]
+permissions: { preset: read-only }
+output:
+  type: json
+  schema:
+    type: object
+    required: [approved, findings]
+    properties:
+      approved: { type: boolean }
+      findings:
+        type: array
+        items:
+          type: object
+          required: [severity, message]
+          properties:
+            severity: { enum: [critical, high, medium, low, info] }
+            file: { type: string }
+            line: { type: integer }
+            message: { type: string }
