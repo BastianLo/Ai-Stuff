@@ -1,7 +1,7 @@
 # AiFlow – Implementierungsplan
 
-> **Status:** Entwurf v1 · **Stand:** 2026-11-07
-> **Ziel-Integration:** opencode ≥ 1.19 (Plugin- und SDK-Typen `@opencode-ai/plugin` / `@opencode-ai/sdk` v1.19.5 geprüft)
+> **Status:** Entwurf, Revision 2 (Kompatibilität mit opencode v1 und v2) · **Stand:** 2026-11-07
+> **Ziel-Integration:** opencode **v1** (≥ 1.18.29) **und v2** (≥ 2.2). Geprüft gegen die Typen von `@opencode-ai/plugin` / `@opencode-ai/sdk` 1.19.5 und `@opencode/plugin` / `@opencode/client` 2.2.6 sowie die offizielle v2-Dokumentation (Migrationsleitfaden, Plugin-Doku, Tag `v2.2.6`)
 > **Sprache der Umsetzung:** TypeScript
 
 ---
@@ -17,8 +17,8 @@
 6. [Repository-Struktur und Tech-Stack](#6-repository-struktur-und-tech-stack)
 7. [Domänenmodell](#7-domänenmodell)
 8. [Ausführungs-Engine](#8-ausführungs-engine)
-9. [opencode-Runtime-Adapter und Worker-Plugin](#9-opencode-runtime-adapter-und-worker-plugin)
-10. [opencode-Bridge-Plugin](#10-opencode-bridge-plugin)
+9. [opencode-Runtime-Adapter und Worker-Rolle](#9-opencode-runtime-adapter-und-worker-rolle)
+10. [opencode-Plugin: Bridge-Rolle](#10-opencode-plugin-bridge-rolle)
 11. [Web-UI](#11-web-ui)
 12. [API und Sicherheit](#12-api-und-sicherheit)
 13. [CLI](#13-cli)
@@ -38,9 +38,9 @@
 | Baustein | Aufgabe |
 |---|---|
 | **AiFlow-Daemon** (`127.0.0.1:5739`) | Web-UI, REST/SSE-API, Workflow-Engine, Run-Historie, Definitionen |
-| **Runtime-Adapter** | Führt Agenten-Schritte aus. Erste Implementierung: ein von AiFlow gestarteter, headless `opencode serve` als „Agent-Worker“. Dadurch werden Provider, Modelle, Tools, MCP-Server und das Berechtigungssystem von opencode wiederverwendet. |
+| **Runtime-Adapter** | Führt Agenten-Schritte aus. Erste Implementierung: ein von AiFlow gestarteter, headless `opencode serve` als „Agent-Worker“, wahlweise opencode v1 oder v2 über je einen eigenen Treiber. Dadurch werden Provider, Modelle, Tools, MCP-Server und das Berechtigungssystem von opencode wiederverwendet. |
 | **Git-Workspace-Manager** | Isolierte Arbeitsverzeichnisse (git worktrees), Checkpoint je Schritt, Review- und Übernahme-Mechanik |
-| **opencode-Bridge-Plugin** | Dünne Integration in die opencode-TUI: `/aiflow-configure`, `/aiflow-wf-<name>`, Live-Status in der Seitenleiste, Freigabe- und Review-Dialoge |
+| **opencode-Plugin** (ein Paket für v1 und v2) | **Bridge-Rolle** in der TUI des Nutzers: `/aiflow-configure`, `/aiflow-wf-<name>`, Live-Status, Freigabe- und Review-Dialoge. **Worker-Rolle** in den Agenten-Sessions: Durchsetzung von Rechten, strukturierte Übergabe, Hilfs-Tools. |
 
 Das Ausführungsmodell ruht auf vier Ideen:
 
@@ -48,6 +48,8 @@ Das Ausführungsmodell ruht auf vier Ideen:
 2. **Strukturierte Übergabe:** Jeder Schritt endet mit einer JSON-Schema-validierten Übergabe. Daraus werden Zweig-Entscheidungen, Abstimmungen und Bedingungen deterministisch ausgewertet.
 3. **Eine Regel für alle Verbindungsarten:** Pro Ausführung feuert genau **ein Ausgangsport** eines Knotens. Hängen an diesem Port mehrere Kanten, laufen sie **parallel**. Sequenz, Verzweigung, Bedingung, Parallelisierung, Schleife und Fehlerpfad folgen alle aus dieser einen Regel.
 4. **Volle Nachvollziehbarkeit:** Jeder Run wird per Event-Sourcing aufgezeichnet. Pro Schritt gibt es einen Git-Checkpoint, und der exakte Prompt jedes Agenten ist einsehbar.
+
+**Kompatibilität:** AiFlow unterstützt opencode v1 und v2 parallel. Agenten, Rechte, Übergaben und Events sind in AiFlow versionsneutral modelliert; versionsspezifische Treiber und Plugin-Shells übersetzen in die jeweilige API (Kapitel 5.5).
 
 ---
 
@@ -60,6 +62,7 @@ Das Ausführungsmodell ruht auf vier Ideen:
 - **Hohe Ergebnisqualität durch Struktur**: Planung, harte Gates (Tests, Lint, Typecheck), mehrere spezialisierte Reviewer, Best-of-N, Feedback-Schleifen. Die Qualität soll nicht davon abhängen, dass ein einzelner Modellaufruf gut ausfällt.
 - **Reproduzierbare, nachvollziehbare Runs** mit History, Diffs pro Schritt und Review vor der Übernahme.
 - **Unabhängigkeit**: Die Engine kennt nur ein Runtime-Interface. opencode ist der erste Adapter, die TUI-Integration nur eine Bridge.
+- **Kompatibel mit opencode v1 und v2**: v1 ab 1.18.29, v2 ab 2.2, aus einem Plugin-Paket und einem Runtime-Adapter.
 - **Bedienbar aus der opencode-TUI, der Web-UI und der CLI** (CLI auch headless, z. B. in CI).
 
 ### Nicht-Ziele (vorerst)
@@ -98,7 +101,9 @@ Das Ausführungsmodell ruht auf vier Ideen:
 | **Workspace** | Arbeitsverzeichnis eines Tokens, in der Regel ein git worktree. |
 | **Workflow-Dokument** | Vom Workflow definierte Datei, z. B. `plan.md`, mit Zugriffsrechten pro Knoten. |
 | **Daemon** | Der AiFlow-Hauptprozess (API, Engine, UI). |
-| **Worker** | Der von AiFlow gestartete `opencode serve`-Prozess, in dem die Agenten-Sessions laufen. |
+| **Worker** | Der von AiFlow gestartete `opencode serve`-Prozess (v1 oder v2), in dem die Agenten-Sessions laufen. |
+| **opencode-Plugin** | Das AiFlow-Paket für opencode v1 und v2. Bridge-Rolle in der opencode-Instanz des Nutzers, Worker-Rolle im Worker. |
+| **Treiber** | Versionsspezifischer Teil des Runtime-Adapters (v1 oder v2), der das versionsneutrale AiFlow-Modell in die jeweilige opencode-API übersetzt. |
 
 ---
 
@@ -108,6 +113,7 @@ Diese Punkte sind gegenüber den ursprünglichen Ideen hinzugekommen oder präzi
 
 | Ergänzung | Warum |
 |---|---|
+| **Kompatibilität mit opencode v1 und v2** | v2 bricht Plugin- und Server-API, v1 aktualisiert sich seit 1.19 nicht mehr selbst. Ein versionsneutrales Modell mit zwei Treibern und einem Plugin-Paket deckt beide ab. |
 | **Port-Semantik** als einheitliches Verbindungsmodell | Eine einfache, eindeutige Regel statt vieler Sonderfälle. Leicht zu validieren und zu visualisieren. |
 | **Bedingungs-Knoten** (regelbasiert) zusätzlich zur Agent-Entscheidung | Wenn eine Entscheidung objektiv prüfbar ist, ist sie deterministisch und braucht kein LLM. |
 | **Skript-Knoten** (Tests, Lint, Typecheck, Build) | Harte Qualitäts-Gates sind zuverlässiger als LLM-Urteile. Das ist der wichtigste Hebel für Codequalität. |
@@ -137,7 +143,7 @@ Diese Punkte sind gegenüber den ursprünglichen Ideen hinzugekommen oder präzi
 
 ## 4. Nutzerreise von Anfang bis Ende
 
-1. **Installation**: AiFlow installieren (`npm i -g aiflow` o. ä.) und das Bridge-Plugin in `opencode.json` eintragen.
+1. **Installation**: AiFlow installieren (`npm i -g aiflow` o. ä.) und `aiflow setup opencode` ausführen. Der Befehl erkennt die opencode-Version (v1 oder v2) und trägt das Plugin nach Bestätigung in der passenden Form in die globale opencode-Konfiguration ein.
 2. **Konfigurieren**: In opencode `/aiflow-configure` ausführen. Läuft der Daemon noch nicht, wird er gestartet. Danach öffnet sich der Browser auf `http://localhost:5739` mit dem aktuellen Projekt als Kontext (Login über einen Einmal-Link).
 3. **Agenten anlegen**: von Grund auf oder aus einer Vorlage. Zum Beispiel ein Planner, ein Implementer, ein Security-Reviewer, ein Standards-Reviewer und ein Documenter. Jeder bekommt Identität, Modell, Rechte, MCP-Zugriff und Ausgabe-Vertrag. Im Playground lässt sich ein Agent direkt ausprobieren.
 4. **Workflow bauen**: Agenten-Kacheln aufs Canvas ziehen und Bausteine (Start, Skript, Zusammenführung, Ende …) ergänzen. Dann Ports verbinden, Zweige beschreiben, Dokumente definieren und Zugriffe in der Matrix setzen. Die Live-Validierung zeigt Probleme sofort. Ein Testlauf ohne LLM prüft die Logik.
@@ -156,7 +162,7 @@ Diese Punkte sind gegenüber den ursprünglichen Ideen hinzugekommen oder präzi
 ```mermaid
 flowchart LR
   subgraph Rechner["Rechner des Nutzers"]
-    TUI["opencode TUI<br/>+ AiFlow-Bridge-Plugin"]
+    TUI["opencode TUI · v1 oder v2<br/>+ AiFlow-Plugin: Bridge-Rolle"]
     Browser["Browser<br/>AiFlow Web-UI"]
     CLI["aiflow CLI"]
     subgraph Daemon["AiFlow-Daemon · Node · 127.0.0.1:5739"]
@@ -165,9 +171,9 @@ flowchart LR
       Store[("SQLite<br/>Event-Store")]
       Defs["Definitionen<br/>YAML global + Projekt"]
       WSM["Workspace-Manager<br/>git worktrees"]
-      RT["Runtime-Adapter<br/>opencode"]
+      RT["Runtime-Adapter<br/>opencode-Treiber v1 / v2"]
     end
-    Worker["opencode serve · headless<br/>Agent-Worker<br/>+ AiFlow-Worker-Plugin"]
+    Worker["opencode serve · headless · v1 oder v2<br/>Agent-Worker<br/>+ AiFlow-Plugin: Worker-Rolle"]
     Repo["Projekt-Repo<br/>+ Worktrees"]
   end
   LLM["LLM-Provider<br/>z. B. DeepSeek"]
@@ -181,7 +187,7 @@ flowchart LR
   Engine --> Defs
   Engine --> WSM
   Engine --> RT
-  RT -- "@opencode-ai/sdk" --> Worker
+  RT -- "v1: @opencode-ai/sdk<br/>v2: @opencode/client" --> Worker
   Worker --> LLM
   Worker --> MCP
   Worker --> Repo
@@ -196,25 +202,24 @@ flowchart LR
 | **engine** | Scheduler, Token-Logik, Kontext-Assembler, Abschluss-Phase, Joins, Limits | nur Interfaces (Ports) |
 | **store** | Event-Store, Projektionen, Datei-Ablage großer Inhalte, Definitions-Repository (YAML) | core |
 | **workspace-git** | Basis-Snapshots, Worktrees, Checkpoints, Diffs, Übernahme | core |
-| **runtime-opencode** | Worker-Prozess, Sessions, Event-Mapping, Rechte-Mapping | core, opencode-SDK |
+| **runtime-opencode** | Worker-Prozess, Versionserkennung, Treiber für die v1- und die v2-API, Event- und Rechte-Mapping | core, `@opencode-ai/sdk` (v1), `@opencode/client` (v2) |
 | **server** | HTTP, Auth, SSE, Composition Root (verdrahtet alles) | alles |
 | **web** | Web-UI | client |
 | **cli** | Kommandozeile | client |
-| **opencode-bridge** | Integration in die TUI des Nutzers | client, opencode-Plugin-API |
-| **opencode-worker-plugin** | Durchsetzung und Hilfs-Tools im Worker | opencode-Plugin-API |
+| **opencode-plugin** | Ein Paket für opencode v1 und v2: Bridge-Rolle (Commands, TUI-Ansicht, Dialoge) und Worker-Rolle (Guards, Übergabe, Hilfs-Tools) über einem gemeinsamen Kern | client, Plugin-APIs von v1 und v2 |
 
 ### 5.3 Prozessmodell
 
 - **Daemon**: ein Prozess pro Rechner, global für alle Projekte. Start per `aiflow serve` oder automatisch durch die Bridge. Eine Lock-Datei verhindert Doppelstarts.
-- **Agent-Worker**: Der Daemon startet und überwacht einen `opencode serve` auf einem zufälligen freien Port, nur auf `127.0.0.1`. Bei einem Absturz startet er ihn mit Backoff neu. Laufende Schritte werden dann wiederholt.
-  - Der Worker nutzt die normale opencode-Konfiguration des Nutzers (Provider, Auth, MCP-Server) und lädt zusätzlich das AiFlow-Worker-Plugin.
-  - Sessions werden mit dem Query-Parameter `directory` auf das jeweilige Worktree gerichtet. So bedient **ein** Worker beliebig viele Projekte und Worktrees parallel.
+- **Agent-Worker**: Der Daemon startet und überwacht einen `opencode serve` (v1 oder v2, siehe 5.5) auf einem zufälligen freien Port, nur auf `127.0.0.1` und mit zufälligem Passwort. Bei einem Absturz startet er ihn mit Backoff neu. Laufende Schritte werden dann wiederholt.
+  - Der Worker nutzt die normale opencode-Konfiguration des Nutzers (Provider, Auth, MCP-Server). Dort ist das AiFlow-Plugin global eingetragen. Der Daemon startet den Worker mit der Umgebungsvariable `AIFLOW_WORKER=1`; nur dann aktiviert das Plugin seine Worker-Rolle (9.3). Beim Start prüft der Daemon über die Plugin-Liste des Workers, ob das Plugin aktiv ist.
+  - Sessions werden auf das jeweilige Worktree gerichtet (v1: Query-Parameter `directory`, v2: `location.directory`). So bedient **ein** Worker beliebig viele Projekte und Worktrees parallel.
 - **Warum ein eigener Worker statt der laufenden TUI-Instanz?**
   - Runs überleben das Schließen der TUI.
   - Runs, die aus der Web-UI oder CLI gestartet werden, brauchen keine TUI.
   - Die Session-Liste des Nutzers bleibt sauber.
   - Rechte und Plugins für Agenten-Sessions sind getrennt steuerbar.
-  - *Später optional:* ein „Attached Mode“, in dem Agenten-Sessions als Child-Sessions in der TUI sichtbar sind. `PluginInput.serverUrl` liefert die Adresse der TUI-Instanz.
+  - *Später optional:* ein „Attached Mode“, in dem Agenten-Sessions als Child-Sessions in der TUI sichtbar sind. In v1 liefert `PluginInput.serverUrl` die Adresse der TUI-Instanz. In v2 bietet sich der gemeinsame Hintergrunddienst an (`opencode serve --service`, `Service.ensure()` aus `@opencode/client/service`); Agenten-Sessions lassen sich dort als Kind-Sessions anlegen und in der TUI als Tab öffnen.
 
 ### 5.4 Runtime-Abstraktion
 
@@ -235,30 +240,127 @@ export interface AgentRuntime {
 }
 ```
 
+Der opencode-Adapter hat zwei **Treiber** (v1, v2) hinter diesem Interface. Unterschiede meldet `capabilities()`, z. B. `structuredOutput: "format" | "tool"`, `userQuestions: "question" | "form"` oder `lsp: boolean`. Die Engine richtet sich nur nach diesen Fähigkeiten, nie nach Versionsnummern.
+
 Spätere Adapter:
 
 - **Direct-LLM**: OpenAI-kompatible API für reine Text-Agenten ohne Dateizugriff, z. B. Evaluator oder Decider. Schneller, weil ohne Worker-Overhead.
 - **Claude Code / andere Agent-CLIs**
 - **Remote-Worker**
 
-### 5.5 Geprüfte opencode-Schnittstellen
+### 5.5 opencode-Kompatibilität (v1 und v2)
 
-Grundlage sind die veröffentlichten Typen von `@opencode-ai/plugin` und `@opencode-ai/sdk` in Version 1.19.5. Die Dokumentationsseite war aus der Planungsumgebung nicht erreichbar. Der Status unterscheidet deshalb zwischen „in Typen vorhanden“ und „Verhalten per Spike prüfen“ (siehe [Kapitel 17](#17-risiken-und-spikes)).
+opencode 2 ist seit Oktober 2026 verfügbar. Laut offiziellem Migrationsleitfaden bricht v2 bewusst an drei Stellen mit v1: **Plugin-API**, **Server-API mit Clients** und **TUI-Konfiguration**. Konfiguration sowie Agenten-, Command- und Skill-Dateien bleiben weitgehend kompatibel. AiFlow hängt genau an den ersten beiden Bruchstellen und braucht deshalb eine bewusste Doppelstrategie.
 
-| Zweck in AiFlow | opencode-API | Status |
+Quellen: offizieller Migrationsleitfaden und Plugin-Doku im opencode-Repository (Tag `v2.2.6`, `services/site/src/docs/content/`) sowie die Typen der npm-Pakete beider Linien. Was sich nur am laufenden System klären lässt, ist als Spike markiert (Kapitel 17).
+
+#### 5.5.1 Unterstützte Versionen
+
+| Linie | Unterstützt | Pakete | Bemerkung |
+|---|---|---|---|
+| v1 | ≥ 1.18.29, getestet mit 1.19.x | `@opencode-ai/plugin`, `@opencode-ai/sdk` | Ab 1.18.29 lädt v1 Plugins mit kombiniertem Einstiegspunkt (5.5.4). Seit 1.19 installiert v1 keine Updates mehr selbst und bietet das Upgrade auf v2 an. |
+| v2 | ≥ 2.2, getestet mit 2.2.6 | `@opencode/plugin`, `@opencode/client` (optional `@opencode/sdk`) | Neue Plugin- und Server-API. Referenz für neue Funktionen. |
+
+Wie lange v1 unterstützt wird, legt ein ADR fest. Empfehlung: so lange, wie es im Team genutzt wird.
+
+#### 5.5.2 Strategie
+
+1. **Versionsneutrales Modell in AiFlow:** Agenten, Rechte, Modelle, Übergaben und Events sind in `core` unabhängig von opencode definiert. Das Rechte-Modell übernimmt die ausdrucksstärkere v2-Form: geordnete Regeln `{ action, resource, effect }`, die letzte passende Regel gewinnt.
+2. **Zwei Treiber im Runtime-Adapter** (`runtime-opencode/src/v1`, `…/v2`) übersetzen das Modell in die jeweilige Server-API. Unterschiede meldet `capabilities()` (5.4).
+3. **Ein Plugin-Paket mit zwei dünnen Shells** (`opencode-plugin/src/v1`, `…/v2`) über einem gemeinsamen Kern: Pfad- und Rechteprüfung, Übergabe-Validierung, Command-Logik, Status-Darstellung, AiFlow-Client. Die Shells binden nur an die API und enthalten keine Logik.
+4. **Versionserkennung** beim Start des Workers und beim Laden des Plugins. Konfiguration: `opencode.api: auto | v1 | v2`, optional `opencode.binary`.
+5. **Tests gegen beide Linien** als Matrix in CI (14.2).
+
+#### 5.5.3 Gegenüberstellung
+
+| Bedarf in AiFlow | opencode v1 | opencode v2 |
 |---|---|---|
-| Session pro Schritt im Worktree | `session.create({ query: { directory }, body: { title, parentID, agent, model, metadata, permission } })` | vorhanden |
-| Prompt mit Agent-Parametern | `session.prompt` / `session.promptAsync` mit `agent, model, system, tools, variant, parts, noReply` | vorhanden; Semantik von `system` prüfen (S1) |
-| Strukturierte Übergabe | `format: { type: "json_schema", schema, retryCount }` | vorhanden; Zuverlässigkeit mit DeepSeek V4.1 Flash prüfen (S3) |
-| Rechte pro Session | `permission: PermissionRule[]` mit `{ permission, pattern, action }` | vorhanden; Muster-Semantik prüfen (S2) |
-| Self-Consistency / Kontext-Modus „fork“ | `session.fork` | vorhanden |
-| Abbruch | `session.abort` | vorhanden |
-| Live-Events | `event.subscribe()` (SSE), u. a. `session.status`, `session.idle`, `session.error`, `session.diff`, `message.part.updated`, `message.part.delta`, `todo.updated`, `permission.asked`, `question.asked` | vorhanden |
-| Rückfragen und Rechte-Anfragen beantworten | `question.reply` / `question.reject`, `permission.reply` | vorhanden |
-| Daten für den Agenten-Editor | `provider.list`, `mcp.status`, `tool.ids` / `tool.list`, `app.agents`, `config.get` | vorhanden |
-| Plugin-Hooks (Server) | `config`, `event`, `tool` (eigene Tools; `context` liefert `sessionID, directory, worktree, abort, metadata(), ask()`), `tool.execute.before/after`, `permission.ask`, `shell.env`, `chat.params`, `command.execute.before`, `experimental.session.compacting` | vorhanden |
-| TUI-Plugin | Slots (`sidebar_content`, `sidebar_footer`, `session_prompt_right`, `app_bottom`, `home_bottom`), eigene Routen, Dialoge (`DialogSelect/Prompt/Confirm/Alert`), `ui.toast`, `attention.notify` (Desktop-Benachrichtigung und Sound), Keymap-Commands mit Slash-Namen, `event.on`, `kv`, `client` | vorhanden; Slash-Commands mit Argumenten prüfen (S6) |
-| Dynamische Commands ohne Neustart | v2-Plugin-API `command.transform` + `reload()` (experimentell) | vorhanden, experimentell |
+| Plugin-Einstieg | Export mit `server(input, options)`, der ein Hooks-Objekt liefert | `Plugin.define({ id, setup(ctx) })`; Registrierungen über die Domänen von `ctx` |
+| Plugin-Konfiguration | `"plugin": ["pkg", ["pkg", { … }]]`; lokal als Datei `.opencode/plugin/x.ts` | `"plugins": ["pkg", { "package": "pkg", "options": { … } }]` (die v1-Form wird normalisiert); lokal als Verzeichnis `.opencode/plugins/x/index.ts` |
+| TUI-Teil | `@opencode-ai/plugin/tui`, Modul `{ id, tui(api) }`; Laden vermutlich über `tui.json` (Spike S6) | `./tui`-Export mit `Plugin.define` aus `@opencode/plugin/tui`; wird mit dem Server-Teil geladen |
+| Slash-Command ohne LLM | TUI-Keymap-Command mit `slash`; Fallback: `command`-Eintrag per `config`-Hook, abgefangen mit `command.execute.before` | Server: `ctx.command.transform(e => e.add({ name, execute }))`, `execute` erhält den rohen Prompt; TUI: `keymap.layer` mit `slash: { name, arguments: true }` |
+| Command-Liste aktualisieren | TUI-Layer neu registrieren; Server-Commands erst nach Neustart | `ctx.command.reload()`; Keymap-Layer sind reaktiv |
+| Server-Client | `@opencode-ai/sdk` (`createOpencodeClient`) | `@opencode/client` (`OpenCode.make`); optional `@opencode/client/service` für den Hintergrunddienst |
+| Server-Authentifizierung | Basic Auth, `OPENCODE_SERVER_PASSWORD` (Benutzername per `OPENCODE_SERVER_USERNAME`) | Basic Auth, `OPENCODE_PASSWORD`, Benutzer immer `opencode` |
+| Session im Worktree | `session.create({ query: { directory } })` | `session.create({ location: { directory } })` |
+| Rechte pro Session | `permission: [{ permission, pattern, action }]` | `permissions: [{ action, resource, effect }]`, geordnet; änderbar per `session.update` |
+| Aktionsnamen | `bash`, `task`, `edit` / `write` / `patch` | `shell`, `subagent`, `edit` |
+| `external_directory` | Standard: nachfragen | Standard: **erlaubt** |
+| Agent und Modell | Pro Prompt `agent`, `system`, `tools`, `model`, `variant` | Agenten per `ctx.agent.transform` (Feld `system`); Session mit `agent` und `model`, Wechsel per `switchAgent` / `switchModel`; Modell als `provider/model#variant` |
+| Temperatur, top_p | Hook `chat.params` | `ctx.session.hook("context")` → `event.options`, oder Modell-Variante |
+| Zusätzlicher Kontext | Prompt-Text bzw. `system` | Instruktions-Einträge `session.instructions.entry.put` (eigene `<context>`-Blöcke, ohne zusätzlichen Turn) |
+| Strukturierte Ausgabe | `format: { type: "json_schema", schema, retryCount }` | Kein `format`; Tool mit JSON-Schema-Eingabe, Schema pro Session über den `context`-Hook anpassbar |
+| Ende der Arbeit erkennen | Event `session.idle` | `session.wait`; Events `session.execution.succeeded` / `failed` / `interrupted` |
+| Fork, Abbruch | `session.fork`, `session.abort` | `session.fork`, `session.interrupt` |
+| Events | `event.subscribe()`: `message.part.*`, `session.status` / `idle` / `error` / `diff`, `permission.asked`, `question.asked` | `client.event.subscribe({ types })`, nur live ohne Replay: `session.text.*`, `session.tool.*`, `session.step.*`, `session.execution.*`, `session.usage.*`, `permission.asked`, `form.*` |
+| Tool-Aufrufe prüfen | `tool.execute.before` (Fehler werfen) | `ctx.tool.hook("execute.before")` (Fehler werfen), `ctx.permission.hook("evaluate")` |
+| Shell-Umgebung | `shell.env` | `ctx.shell.hook("create.before")` |
+| Eigene Tools | `tool` mit Helper `tool()` und Zod | `ctx.tool.transform` mit JSON Schema; Fortschritt über `context.progress` |
+| Kompaktierung | `experimental.session.compacting` | `ctx.session.hook("compaction")` |
+| Rückfragen an den Nutzer | `question`-Tool, `question.reply` | Forms (`form.created`, Form-API) |
+| Plugin-Zustand | eigene Datei | `ctx.storage` |
+| Kanal zwischen Plugin-Teilen und Clients | – | Plugin-RPC (`ctx.rpc.register`, `client.rpc(Vertrag)`, eigene Events) |
+| TUI-Erweiterungen | Slots `sidebar_content`, `session_prompt_right`, `app_bottom`; Routen; Dialoge | Slots `sidebar.content`, `prompt.footer.status`, `home.footer.status`, **`session.panel`**; Router; Promise-Dialoge |
+| Desktop-App | – | GUI-Teil `./gui-experimental` (experimentell) |
+| Language-Server | vorhanden | nicht vorhanden |
+
+#### 5.5.4 Ein Paket für beide Versionen
+
+v2 liest aus dem Default-Export `id` und `setup()`, v1 (ab 1.18.29) ruft `server()` auf. Ein kombinierter Default-Export bedient beide; der offizielle Migrationsleitfaden beschreibt genau diese Form.
+
+```ts
+// packages/opencode-plugin/src/index.ts – kombinierter Einstiegspunkt
+// Keine statischen Imports versionsspezifischer Laufzeitpakete:
+// Jede Shell wird erst im passenden Pfad per dynamischem import() geladen.
+export default {
+  id: "aiflow",
+  async setup(ctx: unknown) {
+    // opencode v2
+    const { setupV2 } = await import("./v2/server.js")
+    return setupV2(ctx)
+  },
+  async server(input: unknown, options?: unknown) {
+    // opencode v1
+    const { serverV1 } = await import("./v1/server.js")
+    return serverV1(input, options)
+  },
+}
+```
+
+`Plugin.define` aus `@opencode/plugin` gibt sein Argument unverändert zurück. Das Objekt-Literal ist deshalb gleichwertig und vermeidet, dass v1 ein v2-Paket laden muss.
+
+```jsonc
+// packages/opencode-plugin/package.json (Auszug)
+{
+  "name": "opencode-aiflow",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js",   // Server-Teil: v2 setup() + v1 server()
+    "./tui": "./dist/tui.js", // TUI-Teil (v2; v1 siehe unten)
+    "./rpc": "./dist/rpc.js"  // RPC-Vertrag (v2) für TUI-Teil und Clients
+  },
+  "peerDependencies": {
+    "effect": "^4.0.0",
+    "@opentui/core": ">=0.6.6",
+    "@opentui/solid": ">=0.6.6",
+    "solid-js": ">=1.9.0"
+  }
+}
+```
+
+- v2 stellt `effect` und `@opencode/plugin` zur Laufzeit selbst bereit. `effect` wird nicht gebündelt.
+- Der TUI-Teil wird nach demselben Muster kombiniert (`{ id, setup, tui }`), sofern v1 das unterstützt. Andernfalls bekommt v1 einen eigenen Einstiegspunkt `./tui-v1` (Spike S6).
+- Ein GUI-Teil für OpenCode Desktop (`./gui-experimental`) folgt später (Phase 9).
+
+#### 5.5.5 Auswirkungen auf das Design
+
+- **Strukturierte Übergabe:** v1 nutzt `format: json_schema`, v2 ein Übergabe-Tool (8.4). Die Engine sieht in beiden Fällen dasselbe validierte Ergebnis.
+- **Rechte:** v2 erlaubt `external_directory` standardmäßig. AiFlow setzt deshalb in jeder Session vollständige, explizite Regeln und verlässt sich nie auf Standardwerte.
+- **Sampling:** v2 setzt Temperatur und Co. pro Session über den `context`-Hook oder über Modell-Varianten. DeepSeek wendet `temperature` nur bei ausgeschaltetem Thinking an; der Agenten-Editor weist darauf hin.
+- **Modellreferenz:** AiFlow speichert `{ providerID, modelID, variant }`. Der v2-Treiber bildet daraus `provider/model#variant`, der v1-Treiber getrennte Felder.
+- **Rückfragen:** Fragen über das v1-`question`-Tool und über v2-Forms landen in derselben Inbox.
+- **LSP:** v2 startet keine Language-Server; das LSP-Lastproblem bei vielen Worktrees betrifft nur v1. Für beide Linien gilt: Prüfungen gehören in Skript-Knoten (Typecheck, Lint, Tests).
+- **Todos:** in v2 standardmäßig aus; AiFlow braucht sie nicht.
 
 ---
 
@@ -287,13 +389,14 @@ plugins/aiflow/
     ├── engine/                   # Orchestrierung gegen Interfaces
     ├── store/                    # SQLite-Event-Store, Projektionen, YAML-Repository
     ├── workspace-git/            # Worktrees, Snapshots, Checkpoints, Diffs, Übernahme
-    ├── runtime-opencode/         # AgentRuntime für opencode + Worker-Prozessverwaltung
-    ├── opencode-worker-plugin/   # Plugin im Worker: Guards, Hilfs-Tools, Env
+    ├── runtime-opencode/         # AgentRuntime für opencode: Worker-Prozess, Versionserkennung
+    │   └── src/{common,v1,v2}/   #   Treiber für die v1-API (@opencode-ai/sdk) und die v2-API (@opencode/client)
     ├── server/                   # Hono-App, Auth, SSE, statische Web-UI, Composition Root
     ├── client/                   # typisierter API-Client (web, cli, bridge)
     ├── cli/                      # `aiflow`
     ├── web/                      # React-Web-UI
-    ├── opencode-bridge/          # Plugin für die opencode-Instanz des Nutzers (Server- + TUI-Modul)
+    ├── opencode-plugin/          # npm-Paket „opencode-aiflow“ für opencode v1 und v2
+    │   └── src/{core,v1,v2}/     #   gemeinsamer Kern + dünne Shells (Server-Teil, TUI-Teil, v2-RPC)
     └── testkit/                  # FakeRuntime, In-Memory-Store, Temp-Git-Repos, Fixtures
 ```
 
@@ -302,9 +405,10 @@ plugins/aiflow/
 - `core` hängt von keinem anderen Paket ab, nur von `zod` und kleinen Pure-Libs.
 - `engine` hängt nur von `core` und eigenen Interfaces ab. Es kennt weder SQLite noch git noch opencode.
 - `store`, `workspace-git` und `runtime-opencode` hängen von `core` ab und implementieren die Ports der Engine.
+- In `runtime-opencode` importieren die Treiber `v1/` und `v2/` nur `common/` und `core`, nie einander.
 - `server` ist die einzige Stelle, die alles zusammensteckt.
-- `client` hängt nur von `core` ab (Typen und Schemas). `web`, `cli` und `opencode-bridge` nutzen ausschließlich `client`.
-- `opencode-bridge` und `opencode-worker-plugin` dürfen keine Node-only-Abhängigkeiten haben, weil sie in der Bun-Runtime von opencode laufen.
+- `client` hängt nur von `core` ab (Typen und Schemas). `web`, `cli` und `opencode-plugin` nutzen ausschließlich `client`.
+- `opencode-plugin` darf keine Node-only-Abhängigkeiten haben, weil es in der Bun-Runtime von opencode läuft. `effect` wird nicht gebündelt, sondern als `peerDependency` deklariert (Vorgabe von v2). Die Shells `v1/` und `v2/` importieren nur den Plugin-Kern `core/`, nie einander.
 
 ### 6.2 Tech-Stack
 
@@ -323,7 +427,8 @@ plugins/aiflow/
 | Bedingungen | JSON Logic | Serialisierbar und sicher (kein `eval`), im UI per Regel-Builder erzeugbar |
 | Templates | Logikloses Mustache-artiges Rendering, strikt | Unbekannte Variablen sind Validierungsfehler. Keine Code-Ausführung. |
 | Web-UI | React 19, Vite, TanStack Router + Query, `@xyflow/react` (Canvas), elkjs (Auto-Layout), Zustand + zundo (Undo/Redo), shadcn/ui + Tailwind, Monaco (Prompts, Schemas, YAML, Diffs), react-hook-form + Zod, i18next (de/en) | Bewährte Bausteine für node-basierte Editoren |
-| TUI-Plugin | `@opencode-ai/plugin/tui` mit `@opentui/solid` | Offizielle TUI-Plugin-API von opencode |
+| opencode-Anbindung | v1: `@opencode-ai/sdk`, `@opencode-ai/plugin` · v2: `@opencode/client`, `@opencode/plugin` | Offizielle Pakete der jeweiligen Linie |
+| TUI-Plugin | v1: `@opencode-ai/plugin/tui` · v2: `@opencode/plugin/tui`, jeweils mit `@opentui/solid` | Offizielle TUI-Plugin-APIs |
 | Logging | pino (JSON), eigene Logdatei pro Run | Strukturierte Logs mit Korrelations-IDs |
 | Tests | Vitest, Playwright | Schnell, TS-nativ |
 | Codequalität | ESLint (`typescript-eslint` strictTypeChecked), Prettier, dependency-cruiser, knip, lefthook | Automatisch durchgesetzte Standards |
@@ -373,12 +478,12 @@ classDiagram
 | | Projekt-Instruktionen | `AGENTS.md` und Projektregeln einbeziehen (Standard: an) |
 | **Modell** | Modell | Provider und Modell aus opencode (`provider.list`). Leer bedeutet Workflow- oder globaler Standard. |
 | | Variante / Reasoning | z. B. `high` (opencode `variant`) |
-| | Temperatur, top_p | Optional |
+| | Temperatur, top_p | Optional. In v2 pro Session über den Kontext-Hook bzw. eine Modell-Variante. DeepSeek wendet `temperature` nur bei ausgeschaltetem Thinking an; der Editor weist darauf hin. |
 | | Max. Schritte | Maximale Tool-Call-Iterationen (opencode `steps`) |
 | | Timeout | Pro Schritt |
 | **Werkzeuge und Rechte** | Preset | „Nur lesen“, „Implementieren“, „Voll“, danach individuell anpassbar |
-| | Regeln je Tool | `read, edit, glob, grep, list, bash, webfetch, websearch, task, todowrite, lsp, skill, question` jeweils `allow` / `ask` / `deny`, mit Mustern (z. B. bash `git push*` → deny, `pnpm test*` → allow) |
-| | Rückfragen erlaubt | Darf der Agent den Nutzer fragen? (opencode-`question`-Tool) |
+| | Regeln | Geordnete Liste `{ action, resource, effect }`, die letzte passende Regel gewinnt (Form von v2). Aktionen u. a. `read, edit, glob, grep, list, shell, webfetch, websearch, subagent, skill, external_directory`; Effekte `allow` / `ask` / `deny`. Beispiel: `shell` `git push*` → deny, `shell` `pnpm test*` → allow. Der v1-Treiber übersetzt in die v1-Form (`bash`, `task` …) und warnt, wenn eine Regelreihenfolge dort nicht exakt abbildbar ist. |
+| | Rückfragen erlaubt | Darf der Agent den Nutzer fragen? (v1: `question`-Tool, v2: Forms) |
 | **MCP und Skills** | MCP-Server/-Tools | Auswahl aus `mcp.status`, pro Server an oder aus, pro Tool allow oder deny |
 | | Skills | Erlaubte opencode-Skills |
 | **Ausgabe** | Ausgabe-Vertrag | „Freitext“ oder JSON-Schema (visueller Builder für einfache Felder, Experten-Modus als JSON), z. B. `approved: boolean`, `findings[]`, `size: enum` |
@@ -393,11 +498,11 @@ classDiagram
 
 | Preset | Inhalt |
 |---|---|
-| Nur lesen *(Standard für neue Agenten)* | `read/glob/grep/list/lsp`: allow · `edit`: deny · `bash`: deny außer Allowlist (`git diff*`, `git log*`, `git show*`, `git status*`) · Netz: deny · `task`: deny |
-| Implementieren | Wie „Nur lesen“, zusätzlich `edit`: allow (nur im Workspace) und `bash`: allow mit Denylist (`git push*`, `git reset --hard*`, `git checkout*`, `rm -rf /*`, `sudo*` …). Unbekannte Netz-Tools: ask. |
-| Voll | Alles allow außer `task` und `git push*` |
+| Nur lesen *(Standard für neue Agenten)* | `read/glob/grep/list`: allow · `edit`: deny · `shell`: deny außer Allowlist (`git diff*`, `git log*`, `git show*`, `git status*`) · Netz: deny · `subagent`: deny |
+| Implementieren | Wie „Nur lesen“, zusätzlich `edit`: allow (nur im Workspace) und `shell`: allow mit Denylist (`git push*`, `git reset --hard*`, `git checkout*`, `rm -rf /*`, `sudo*` …). Unbekannte Netz-Tools: ask. |
+| Voll | Alles allow außer `subagent` und `git push*` |
 
-`external_directory` ist immer `deny`, mit Ausnahme des Dokument-Ordners des Runs und (nur lesend) der Kandidaten-Worktrees nach einem Join. `task` (Sub-Agenten von opencode) ist standardmäßig aus, weil AiFlow orchestriert.
+`external_directory` ist immer `deny`, mit Ausnahme des Dokument-Ordners des Runs und (nur lesend) der Kandidaten-Worktrees nach einem Join. AiFlow setzt diese Regeln in jeder Session explizit, denn v2 erlaubt `external_directory` standardmäßig. `subagent` (Sub-Agenten von opencode, in v1 `task`) ist standardmäßig aus, weil AiFlow orchestriert.
 
 ### 7.3 Bausteine (Snippets)
 
@@ -628,7 +733,7 @@ Documenter       R           R            R
 - **Zugriff:** Agenten nutzen ihre normalen Datei-Tools mit dem absoluten Pfad aus dem Kontext-Paket. Das ist robuster als Spezial-Tools.
 - **Durchsetzung in drei Stufen:**
   1. Das Session-Permission-Ruleset (`read` / `edit` / `external_directory` mit Pfadmustern).
-  2. Das Worker-Plugin blockiert in `tool.execute.before` unerlaubte Zugriffe hart, mit einer verständlichen Fehlermeldung an den Agenten.
+  2. Das AiFlow-Plugin blockiert in seiner Worker-Rolle unerlaubte Zugriffe hart, mit einer verständlichen Fehlermeldung an den Agenten (v1 `tool.execute.before`, v2 `tool.hook("execute.before")` bzw. `permission.hook("evaluate")`).
   3. Eine Integritätsprüfung nach jedem Schritt (Hash-Vergleich). Unerlaubte Änderungen, z. B. über `bash`, werden zurückgesetzt und als Warn-Event protokolliert.
 - **Versionierung:** Nach jedem Schritt mit Schreibrecht wird ein Snapshot gespeichert. Die Run-Ansicht zeigt den Versionsverlauf mit Diff.
 - **Parallelität:** Dürfen zwei parallele Zweige dasselbe Dokument schreiben (`W`), ist das ein Validierungsfehler. Erlaubt ist nur `A`; die Anhänge werden dann in fester Reihenfolge zusammengeführt.
@@ -734,13 +839,16 @@ includeProjectInstructions: true
 model:
   ref: deepseek/deepseek-v4.1-flash
   variant: high
-  temperature: 0.2
+  temperature: 0.2               # bei DeepSeek nur ohne Thinking wirksam (5.5.5)
 limits: { maxSteps: 60, timeout: 20m, retries: 1 }
 
 permissions:
   preset: read-only
-  rules:
-    bash: { "*": deny, "git diff*": allow, "git log*": allow, "git show*": allow }
+  rules:                         # geordnet, die letzte passende Regel gewinnt
+    - { action: shell, resource: "*",         effect: deny }
+    - { action: shell, resource: "git diff*", effect: allow }
+    - { action: shell, resource: "git log*",  effect: allow }
+    - { action: shell, resource: "git show*", effect: allow }
   questions: false
 mcp:
   allow: [context7]
@@ -804,8 +912,8 @@ sequenceDiagram
 ```
 
 1. **Vorbereitung:** Workspace bereitstellen, Dokument-Rechte berechnen, Kontext-Paket zusammenbauen, Prompt rendern. Der Prompt wird als Event gespeichert.
-2. **Arbeitsphase:** Session anlegen (`directory` = Worktree, `permission` = Ruleset, `metadata` = `{ runId, stepId }`), Prompt asynchron senden, Events streamen. Die Phase endet bei `session.idle`.
-3. **Abschluss-Phase:** Die Engine fordert in derselben Session die Übergabe an, mit `format: json_schema` (8.4).
+2. **Arbeitsphase:** Session anlegen (Worktree als Arbeitsverzeichnis, Rechte-Regeln, `metadata` = `{ runId, stepId }`), Prompt asynchron senden, Events streamen. Die Phase endet, sobald die Session untätig ist (v1 `session.idle`, v2 `session.execution.succeeded` bzw. `session.wait`).
+3. **Abschluss-Phase:** Die Engine fordert in derselben Session die Übergabe an (v1 per `format: json_schema`, v2 per Übergabe-Tool; 8.4).
 4. **Nachprüfung:** Pflichtdokumente vorhanden? Dokument-Integrität gewahrt? Diff nur in erlaubten Pfaden? Bei einem Verstoß folgt eine Nachforderung in der Session, danach `fehler`.
 5. **Abschluss:** Checkpoint-Commit, Dokument-Snapshots, Metriken (Dauer, Tokens, Tool-Calls, Retries).
 6. **Weiterleitung:** Port bestimmen und Tokens für die Nachfolger erzeugen.
@@ -862,14 +970,20 @@ Das Schema der Abschluss-Phase wird pro Knoten generiert:
 ```
 
 - Felder erscheinen nur, wenn sie relevant sind: `branch` nur bei mehreren Ports, `output` nur bei einem Ausgabe-Vertrag.
-- Die Validierung erfolgt doppelt: durch die Runtime (`retryCount`) und durch AiFlow (Zod/Ajv). Ist die Übergabe ungültig, folgt eine Nachforderung mit konkreter Fehlermeldung. Danach wird mit frischer Session wiederholt, und erst dann feuert `fehler`.
+- Die Validierung erfolgt doppelt: durch die Runtime (v1: `retryCount`, v2: Tool-Eingabeschema) und durch AiFlow (Zod/Ajv). Ist die Übergabe ungültig, folgt eine Nachforderung mit konkreter Fehlermeldung. Danach wird mit frischer Session wiederholt, und erst dann feuert `fehler`.
 - **Fallback**, falls ein Modell `json_schema` unzuverlässig umsetzt: Die Antwort wird nach einem JSON-Block durchsucht, validiert und bei Bedarf nachgefordert.
+
+**Umsetzung je opencode-Linie:**
+
+- **v1:** Folge-Prompt mit `format: { type: "json_schema", schema, retryCount }`.
+- **v2:** Es gibt kein `format` mehr. Das Plugin registriert das Tool `aiflow_handoff`. Über den `context`-Hook bekommt es pro Session das knotenspezifische Eingabeschema, d. h. das Schema oben. Der Abschluss-Prompt fordert den Aufruf an. Das Tool validiert die Eingabe und meldet Schemafehler als Tool-Fehler zurück, sodass das Modell sofort korrigieren kann. Geht die Session in den Leerlauf, ohne dass eine gültige Übergabe vorliegt, fordert der `experimental.idle`-Hook sie per synthetischer Nachricht in derselben Ausführung nach. Fällt dieser experimentelle Hook weg, übernimmt die Engine die Nachforderung mit einem normalen Folge-Prompt.
 
 ### 8.5 Robuste Entscheidungen
 
 - **Entscheidungs-Stimmen** (`votes: n`): Nach der Arbeitsphase wird die Session n-mal geforkt (`session.fork`), und jede Kopie trifft ihre Entscheidung. Die Mehrheit gewinnt. Alle Begründungen landen im Entscheidungs-Log. Das kostet Tokens, aber genau das ist hier der richtige Tausch.
 - **Konservativer Fallback-Zweig** pro Entscheidung (z. B. `rejected`): Er greift bei Gleichstand, bei ungültiger Übergabe nach allen Retries oder bei Unklarheit.
 - **Empfehlung im Editor:** Was objektiv prüfbar ist, prüft ein Skript-Knoten (Tests, Lint, Typecheck) vor den LLM-Reviews. LLM-Reviewer bewerten dann nur noch, was ein Skript nicht prüfen kann.
+- **Option in v2:** `experimental.generate.decisions` beantwortet Auswahl-, Ja/Nein- und Bewertungsfragen zustandslos und strukturiert. Damit lässt sich eine Zweigentscheidung zusätzlich unabhängig gegenprüfen, z. B. anhand von Übergabe und Diff-Statistik. Die API ist experimentell und deshalb nur optional.
 
 ### 8.6 Schleifen, Limits, Budgets
 
@@ -902,7 +1016,7 @@ Hat der betroffene Knoten keinen `fehler`-Port, endet der Run mit `failed`. Die 
 ### 8.9 Human-in-the-Loop
 
 - **Mensch-Knoten:** Frage und Optionen (optional mit Freitext) erscheinen in der Inbox der Web-UI, als TUI-Dialog und als Desktop-Benachrichtigung. Die Antwort wird zur Übergabe für den Nachfolger.
-- **Agent-Rückfragen:** Ist das opencode-`question`-Tool für den Agenten erlaubt, leitet AiFlow das `question.asked`-Event an Inbox und TUI weiter. Die Antwort geht per `question.reply` zurück.
+- **Agent-Rückfragen:** Darf der Agent fragen, leitet AiFlow die Frage an Inbox und TUI weiter. v1: Event `question.asked`, Antwort per `question.reply`. v2: Forms (Event `form.created`, Antwort über die Form-API); die TUI von v2 kann Forms auch nativ anzeigen.
 - **Rechte-Anfragen:** Regeln mit `ask` lösen `permission.asked` aus. Die Anfrage wird weitergereicht, die Antwort geht per `permission.reply` zurück.
 - **Timeouts** mit Standardantwort sind optional. Runs, die auf eine Eingabe warten, blockieren keine anderen Runs.
 
@@ -917,7 +1031,7 @@ Hat der betroffene Knoten keinen `fehler`-Port, endet der Run mit `failed`. Die 
 ### 8.11 Pause und Abbruch
 
 - **Pause:** Es starten keine neuen Schritte. Laufende Schritte werden zu Ende geführt.
-- **Abbruch:** `session.abort` für alle Sessions und `kill` für Skript-Prozessgruppen. Der Status wird `cancelled`. Die Workspaces bleiben bis zum Aufräumen erhalten.
+- **Abbruch:** Alle Sessions werden abgebrochen (v1 `session.abort`, v2 `session.interrupt`) und Skript-Prozessgruppen per `kill` beendet. Der Status wird `cancelled`. Die Workspaces bleiben bis zum Aufräumen erhalten.
 - **Schritt wiederholen:** Ein fehlgeschlagener oder pausierter Schritt kann vom Checkpoint aus neu ausgeführt werden, optional mit geänderter Zusatzanweisung.
 
 ### 8.12 Event-Katalog (Auszug)
@@ -932,64 +1046,97 @@ Hat der betroffene Knoten keinen `fehler`-Port, endet der Run mit `failed`. Die 
 
 ---
 
-## 9. opencode-Runtime-Adapter und Worker-Plugin
+## 9. opencode-Runtime-Adapter und Worker-Rolle
 
 ### 9.1 Lebenszyklus des Workers
 
-- **Start:** `opencode serve --hostname 127.0.0.1 --port <frei>` als Kindprozess. Health-Check, Überwachung und Neustart mit Backoff.
-- **Konfiguration:** Die opencode-Konfiguration des Nutzers bleibt gültig (Provider, Auth, MCP). Zusätzlich wird das AiFlow-Worker-Plugin geladen, ohne die Dateien des Nutzers zu verändern (Mechanismus per Spike S5, z. B. über eine zusätzliche Config-Datei per Umgebungsvariable). Der Worker ist nur für den Daemon erreichbar (zufälliger Port, Server-Passwort, sofern opencode das unterstützt).
-- **Versionsprüfung:** AiFlow deklariert einen unterstützten opencode-Versionsbereich. Bei Abweichung erscheint eine Warnung in UI und `aiflow doctor`.
-- **LSP-Last:** opencode startet Language-Server pro Verzeichnis. Bei vielen Worktrees muss das begrenzt oder für Worker-Sessions abgeschaltet werden (Spike S4).
+- **Versionserkennung:** `opencode --version` bzw. die Server-Info nach dem Start entscheiden über den Treiber (v1 oder v2). Konfiguration: `opencode.api: auto | v1 | v2`, optional `opencode.binary` für einen festen Pfad.
+- **Start:** `opencode serve --hostname 127.0.0.1 --port <frei>` als Kindprozess mit zufälligem Passwort (v1: `OPENCODE_SERVER_PASSWORD`, v2: `OPENCODE_PASSWORD`, Benutzer `opencode`) und `AIFLOW_WORKER=1` samt Daemon-Adresse und Worker-Token in der Umgebung. Danach Health-Check, Überwachung und Neustart mit Backoff.
+- **Plugin-Prüfung:** Nach dem Start fragt der Daemon die Plugin-Liste des Workers ab. Fehlt das AiFlow-Plugin oder passt seine Version nicht, startet kein Run. UI und `aiflow doctor` nennen die Abhilfe (`aiflow setup opencode`).
+- **Versionsprüfung:** unterstützte Bereiche je Linie (5.5.1), Warnung bei Abweichung.
+- **Nur v1:** LSP-Last bei vielen Worktrees begrenzen (Spike S4). v2 startet keine Language-Server.
+- **v2-Option „eingebettet“ (später):** `@opencode/sdk` hostet opencode ohne HTTP-Listener im eigenen Prozess und nimmt Plugins direkt als Objekt entgegen (`OpenCode.create({ plugins })`). Das würde Prozessverwaltung und Plugin-Installation für den Worker überflüssig machen. Ob das unter Node läuft oder Bun voraussetzt, klärt Spike S9.
 
 ### 9.2 Abbildung Agent-Definition → opencode
 
-| AiFlow | opencode |
-|---|---|
-| Identität + Bausteine + Zusatzanweisung des Knotens | `system` beim Prompt bzw. Prompt eines Basis-Agenten über den `config`-Hook (S1) |
-| Modell, Variante | `model { providerID, modelID }`, `variant` |
-| Temperatur, top_p | Hook `chat.params` im Worker-Plugin (per Session aus den Metadaten) |
-| Max. Schritte | Agent-`steps` |
-| Tool-Regeln | Session-`permission` (Ruleset). Deaktivierte Tools werden zusätzlich per `tools`-Map gar nicht erst angeboten. |
-| MCP-Rechte | `tools`-Map mit `<server>_*`-Mustern bzw. Einzel-Tool-IDs |
-| Ausgabe-Vertrag | `format: json_schema` in der Abschluss-Phase |
-| Arbeitsverzeichnis | `query.directory` = Worktree-Pfad |
-| Kontext-Modus `fork`, Stimmen | `session.fork` |
-| Zuordnung Session ↔ Schritt | `metadata: { aiflowRunId, aiflowStepId }` bei `session.create` |
+| AiFlow (versionsneutral) | v1-Treiber | v2-Treiber |
+|---|---|---|
+| Agent als Ganzes | Basis-Agent plus Overrides pro Prompt (`agent`, `system`, `tools`, `model`, `variant`) | Agenten per `ctx.agent.transform` aus den AiFlow-Definitionen erzeugt (`reload()` bei Änderungen); Session wird mit `agent` und `model` angelegt |
+| Identität + Bausteine + Zusatzanweisung des Knotens | `system` beim Prompt (Spike S1) | Agent-Feld `system`; knotenspezifische Ergänzungen über den `context`-Hook (`event.system`) |
+| Kontext-Paket (Dokumente, Iteration, Feedback) | Prompt-Text | Erster Prompt-Text; spätere Aktualisierungen als Instruktions-Einträge (z. B. `aiflow.iteration`), ohne zusätzlichen Nachrichten-Turn |
+| Modell | `model { providerID, modelID }`, `variant` | `model { providerID, id, variant }` bzw. `provider/model#variant` |
+| Temperatur, top_p | Hook `chat.params` (pro Session aus den Metadaten) | `context`-Hook (`event.options`) oder Modell-Variante |
+| Max. Schritte | Agent-`steps` | Agent-`steps` |
+| Rechte | Session-`permission` (`{ permission, pattern, action }`) plus `tools`-Map | Session-`permissions` (`{ action, resource, effect }`, geordnet), bei Bedarf `session.update` |
+| MCP-Rechte | `tools`-Map mit `<server>_*`-Mustern | Regeln über die Tool-Namen der MCP-Tools (Abbildung per Spike S2) |
+| Arbeitsverzeichnis | Query `directory` | `location: { directory }` |
+| Strukturierte Übergabe | `format: json_schema` | Übergabe-Tool (8.4) |
+| Kontext-Modus `fork`, Stimmen | `session.fork` | `session.fork` |
+| Abbruch | `session.abort` | `session.interrupt`, beim Aufräumen `session.remove` |
+| Zuordnung Session ↔ Schritt | `metadata: { aiflowRunId, aiflowStepId }` bei `session.create` | ebenso |
 
-### 9.3 Worker-Plugin (`packages/opencode-worker-plugin`)
+### 9.3 Worker-Rolle des Plugins
 
-| Hook / Tool | Aufgabe |
-|---|---|
-| `tool.execute.before` | Harte Durchsetzung: Pfade außerhalb des erlaubten Bereichs, Dokument-Rechte, Schreibbereich. Wirft einen Fehler mit verständlicher Meldung an den Agenten. |
-| `permission.ask` | Entscheidet nach AiFlow-Regeln, z. B. lesender Zugriff auf Kandidaten-Worktrees |
-| `chat.params` | Temperatur, top_p und Optionen je Session |
-| `shell.env` | `AIFLOW_RUN_ID`, `AIFLOW_STEP_ID`, `AIFLOW_DOCS_DIR` … |
-| `experimental.session.compacting` | Bei Kompaktierung langer Sessions (Kontext-Modus `resume`) werden Auftrag, Dokumentpfade und Iterationsinfo als Pflichtkontext ergänzt |
-| Tool `aiflow_progress(message)` | Kurze Statusmeldung für TUI und Web, z. B. „schreibe Tests für AuthService“ |
-| Tool `aiflow_context(query)` | Ältere Übergaben, Ausgaben und Dokumentversionen nachschlagen |
+Das AiFlow-Plugin steht in der globalen opencode-Konfiguration des Nutzers, also lädt es auch der Worker. **Die Rolle wird beim Laden gewählt:** Nur wenn `AIFLOW_WORKER=1` gesetzt ist, aktiviert das Plugin seine Worker-Rolle (Guards, Übergabe-Tool, Hilfs-Tools). In der opencode-Instanz des Nutzers fehlt die Variable; dort läuft nur die Bridge-Rolle (Kapitel 10). Zusätzlich prüft jeder Worker-Hook die Session-Metadaten und bleibt in Sessions ohne `aiflowStepId` wirkungslos.
 
-Kommunikation mit dem Daemon: lokale HTTP-API mit Worker-Token. Die Zuordnung Session → Schritt läuft über die Session-Metadaten und wird gecacht.
+Die Logik liegt im gemeinsamen Kern; die Shells binden sie an die jeweilige API.
+
+| Aufgabe | v1 | v2 |
+|---|---|---|
+| Harte Durchsetzung (Pfade, Dokument-Rechte, Schreibbereich) | `tool.execute.before` (Fehler werfen) | `ctx.tool.hook("execute.before")` (Fehler werfen) und `ctx.permission.hook("evaluate")` (Effekt und Meldung setzen) |
+| Rechte-Entscheidungen nach AiFlow-Regeln | `permission.ask` | `ctx.permission.hook("evaluate")` |
+| Sampling pro Session | `chat.params` | `ctx.session.hook("context")` |
+| Umgebungsvariablen (`AIFLOW_RUN_ID`, `AIFLOW_STEP_ID`, `AIFLOW_DOCS_DIR` …) | `shell.env` | `ctx.shell.hook("create.before")` |
+| Pflichtkontext bei Kompaktierung (Auftrag, Dokumentpfade, Iteration) | `experimental.session.compacting` | `ctx.session.hook("compaction")` |
+| Übergabe-Schema pro Session | – (`format: json_schema` beim Prompt) | `ctx.session.hook("context")`: Eingabeschema von `aiflow_handoff` in `event.tools` durch das knotenspezifische Schema ersetzen |
+| Übergabe erzwingen | – (übernimmt `format`) | `ctx.session.hook("experimental.idle")`: fehlt eine gültige Übergabe, wird sie per `ctx.session.synthetic` in derselben Ausführung nachgefordert |
+| Tools `aiflow_progress(message)`, `aiflow_context(query)` | `tool` (Helper `tool()`, Zod) | `ctx.tool.transform` (JSON Schema); Fortschritt zusätzlich über `context.progress` |
+| Tool `aiflow_handoff` | – | `ctx.tool.transform` |
+| Kommunikation mit dem Daemon | lokale HTTP-API mit Worker-Token | ebenso |
+
+Die Zuordnung Session → Schritt läuft über die Session-Metadaten und wird gecacht.
 
 ### 9.4 Event-Mapping
 
-Die SSE-Events des Workers (`message.part.updated` / `delta`, `session.status`, `session.idle`, `session.error`, `session.diff`, `todo.updated`, `permission.asked`, `question.asked`) werden in normalisierte `RuntimeEvent`s übersetzt und daraus Run-Events erzeugt. Text-Deltas werden gebündelt und gedrosselt (z. B. alle 250 ms), damit Event-Store und UI nicht überlaufen.
+Die Treiber übersetzen die Server-Events in normalisierte `RuntimeEvent`s:
+
+| Normalisiertes Event | v1 | v2 |
+|---|---|---|
+| Text | `message.part.delta`, `message.part.updated` | `session.text.delta`, `session.text.ended` |
+| Tool-Aufruf | `message.part.updated` (Tool-Part) | `session.tool.called` / `success` / `failed` / `progress` |
+| Modell-Schritt | – | `session.step.started` / `ended` / `failed` |
+| Arbeit beendet | `session.idle` | `session.execution.succeeded`, `session.idle` |
+| Fehler | `session.error` | `session.execution.failed` |
+| Abgebrochen | – | `session.execution.interrupted` |
+| Verbrauch | Nachrichten-Info (Tokens, Kosten) | `session.usage.updated` / `recorded` |
+| Rückfrage | `question.asked` | `form.created` |
+| Rechte-Anfrage | `permission.asked` | `permission.asked` |
+
+- Text-Deltas werden gebündelt und gedrosselt (z. B. alle 250 ms), damit Event-Store und UI nicht überlaufen.
+- Diffs berechnet AiFlow unabhängig von der Linie selbst per git.
+- Die v2-Event-Streams liefern nur live und ohne Replay. Nach einem Verbindungsabbruch gleicht der Treiber den Zustand über `session.get` und `session.context` ab, bevor er wieder abonniert. Der v1-Treiber verfährt genauso.
 
 ---
 
-## 10. opencode-Bridge-Plugin
+## 10. opencode-Plugin: Bridge-Rolle
 
 ### 10.1 Installation und Verbindung
 
-- npm-Paket (Arbeitstitel `opencode-aiflow`) oder lokaler Pfad, eingetragen in `opencode.json`:
+- **Ein npm-Paket** (Arbeitstitel `opencode-aiflow`) für v1 und v2, Aufbau siehe 5.5.4. `aiflow setup opencode` erkennt die Linie und trägt das Plugin nach Bestätigung **global** ein, damit TUI und Worker dasselbe Plugin laden:
   ```jsonc
+  // opencode v1: ~/.config/opencode/opencode.json
   { "plugin": [["opencode-aiflow", { "url": "http://127.0.0.1:5739", "autoStart": true }]] }
+
+  // opencode v2: ~/.config/opencode/opencode.json
+  { "plugins": [{ "package": "opencode-aiflow", "options": { "url": "http://127.0.0.1:5739", "autoStart": true } }] }
   ```
-- Enthält ein **Server-Modul** (Hooks, Tools) und ein **TUI-Modul** (Commands, Seitenleiste, Dialoge). Wie ein Paket beide Module bereitstellt, wird in Spike S6 geklärt.
-- **Beim Laden:**
+- **TUI-Teil:** v2 lädt den `./tui`-Export automatisch mit. Wie v1 den TUI-Teil lädt, klärt Spike S6.
+- **Beim Laden (Bridge-Rolle):**
   1. Health-Check. Ist der Daemon nicht erreichbar und `autoStart` gesetzt, wird `aiflow serve --detach` gestartet.
   2. Auth-Token aus `~/.config/aiflow/auth-token` lesen.
-  3. Projekt registrieren (`directory` und `worktree` aus dem Plugin-Kontext).
-  4. Per SSE Workflow-Änderungen und Runs des Projekts abonnieren.
+  3. Projekt registrieren (v1: `directory` und `worktree` aus dem Plugin-Input; v2: `ctx.location`).
+  4. Workflow-Änderungen und Runs des Projekts per SSE abonnieren.
+- **Transport zwischen TUI-Teil und Daemon:** In v1 spricht der TUI-Teil direkt per HTTP mit dem Daemon. In v2 kann die TUI mit einem entfernten opencode-Server verbunden sein. Der TUI-Teil geht dort deshalb über das Plugin-RPC des Server-Teils (`ctx.rpc.register`, in der TUI `client.rpc(AiFlow)`), und der Server-Teil spricht mit dem Daemon auf seinem Rechner. Ist RPC nicht verfügbar, verbindet sich der TUI-Teil direkt per HTTP.
 
 ### 10.2 Befehle
 
@@ -998,21 +1145,21 @@ Die SSE-Events des Workers (`message.part.updated` / `delta`, `session.status`, 
 | `/aiflow-configure` | Daemon sicherstellen und Browser mit Projektkontext öffnen (Einmal-Login-Link) |
 | `/aiflow-wf-<name> [prompt]` | Workflow starten. Ohne Prompt öffnet sich ein Eingabedialog, fehlende Pflicht-Parameter werden per Dialog abgefragt. |
 | `/aiflow-run` | Workflow über einen Auswahl-Dialog starten |
-| `/aiflow-status` | Detailansicht des aktuellen Runs (eigene TUI-Route) |
+| `/aiflow-status` | Detailansicht des aktuellen Runs |
 | `/aiflow-runs` | Laufende und letzte Runs des Projekts |
 | `/aiflow-inbox` | Offene Freigaben, Rückfragen und Reviews beantworten |
 | `/aiflow-cancel` | Run abbrechen (mit Auswahl) |
 
 **Registrierung:**
 
-- **Bevorzugt:** Das TUI-Modul registriert die Commands als Keymap-Commands mit Slash-Namen. Sie laufen lokal, **ohne LLM-Aufruf**, und die Liste aktualisiert sich live, sobald ein Workflow gespeichert wird.
-- **Fallback bzw. Ergänzung:** Das Server-Modul trägt per `config`-Hook `command`-Einträge ein und fängt sie mit `command.execute.before` ab, wo die Rohargumente verfügbar sind. Dynamische Aktualisierung später über die v2-API (`command.transform` + `reload()`).
-- Spike S6/S7 entscheidet die konkrete Kombination.
-- **Grundsatz:** Der Prompt des Nutzers wird **nie** vom Haupt-LLM umformuliert, sondern unverändert an AiFlow übergeben.
+| | opencode v1 | opencode v2 |
+|---|---|---|
+| Workflow-Commands | TUI-Keymap-Command mit `slash`, läuft lokal ohne LLM. Argumente per Spike S6; sonst Eingabedialog. Fallback: `command`-Einträge per `config`-Hook, abgefangen mit `command.execute.before` (Spike S7); neue Workflows dann erst nach Neustart. | Server-Teil: `ctx.command.transform` mit `execute({ sessionID, prompt })`. Kein LLM, der Prompt kommt roh an. Nach Workflow-Änderungen `ctx.command.reload()`. |
+| Reine TUI-Befehle (`/aiflow-status` …) | TUI-Keymap-Command mit `slash` | Reaktiver `keymap.layer` mit `slash: { name, arguments: true }` |
+
+**Grundsatz:** Der Prompt des Nutzers wird **nie** vom Haupt-LLM umformuliert, sondern unverändert an AiFlow übergeben.
 
 ### 10.3 Live-Ansicht in der TUI
-
-**Seitenleiste** (Slot `sidebar_content`), Panel „AiFlow“:
 
 ```
 AiFlow · feature-review · 06:12
@@ -1026,20 +1173,27 @@ AiFlow · feature-review · 06:12
 • Triage → mittel („3 Module betroffen“)
 ```
 
-**Weitere Elemente:**
+| Element | opencode v1 | opencode v2 |
+|---|---|---|
+| Panel in der Seitenleiste (siehe oben) | Slot `sidebar_content` | Slot `sidebar.content` |
+| Kompakte Statuszeile, z. B. `⚙ feature-review · Implementer (2/3) · 06:12` | Slot `session_prompt_right` bzw. `app_bottom` | Slot `prompt.footer.status` bzw. `home.footer.status` |
+| Detailansicht (Schritt-Timeline, Entscheidungs-Log, Live-Ausschnitt der Agent-Ausgabe, Dokumente, Link zur Web-Ansicht) | Eigene Route | **Session-Panel** (`session.panel`, als Seitenpanel oder Vollbild, geöffnet per `ui.panel.open("aiflow.run")`) |
+| Run-Liste | Eigene Route | Eigene Route (`ui.router`) |
+| Mensch-Knoten, Abschluss-Review (Kurzfassung, Dateiliste mit +/−, Aktionen „Übernehmen“, „Im Browser reviewen“, „Als Branch behalten“, „Verwerfen“) | `DialogSelect`, `DialogPrompt` | Promise-Dialoge `ui.dialog.select` / `prompt` / `confirm` |
+| Agent-Rückfragen | Dialog | Dialog bzw. native Form-Anzeige |
+| Meilensteine (Entscheidungen, Fehler) | `ui.toast` | `ui.toast.show` |
+| „Wartet auf dich“, „fertig“ | `attention.notify` (Desktop-Benachrichtigung und Sound) | `attention.notify` |
+| Lokaler Zustand (z. B. eingeklappte Bereiche) | `kv` | `storage.store` / `storage.memory` |
 
-- **Statuszeile** (Slot `session_prompt_right` bzw. `app_bottom`), kompakt: `⚙ feature-review · Implementer (2/3) · 06:12`.
-- **Detail-Route** (`/aiflow-status`): Schritt-Timeline, Entscheidungs-Log, Live-Ausschnitt der aktuellen Agent-Ausgabe, Dokumente, Link zur Web-Ansicht.
-- **Dialoge:**
-  - Mensch-Knoten (`DialogSelect`, `DialogPrompt` für Freitext)
-  - Agent-Rückfragen
-  - Abschluss-Review: Kurzfassung und Dateiliste mit +/−, Aktionen „Übernehmen“, „Im Browser reviewen“, „Als Branch behalten“, „Verwerfen“
-- **Benachrichtigungen:** `ui.toast` für Meilensteine (Entscheidungen, Fehler). `attention.notify` (Desktop und Sound) für „wartet auf dich“ und „fertig“.
-- **Optional:** Den Abschlussbericht per `session.prompt({ noReply: true })` in die aktuelle Session einfügen, damit das Hauptgespräch das Ergebnis kennt.
+Optional fügt die Bridge den Abschlussbericht in die aufrufende Session ein, damit das Hauptgespräch das Ergebnis kennt: v1 per `session.prompt({ noReply: true })`, v2 per `ctx.session.synthetic` (ob das eine Modellantwort auslöst, wird in Spike S6 geprüft).
 
-### 10.4 Zusatz im Server-Modul
+### 10.4 Zusatz im Server-Teil
 
-Die Tools `aiflow_list_workflows` und `aiflow_run(workflow, prompt)` lassen den Haupt-Agenten auch im normalen Gespräch einen Workflow starten („lass das über den Review-Workflow laufen“). Optional und abschaltbar. Auch hier wird der Prompt unverändert übergeben.
+Die Tools `aiflow_list_workflows` und `aiflow_run(workflow, prompt)` lassen den Haupt-Agenten auch im normalen Gespräch einen Workflow starten („lass das über den Review-Workflow laufen“). Registrierung: v1 über `tool`, v2 über `ctx.tool.transform`. Optional und abschaltbar. Auch hier wird der Prompt unverändert übergeben.
+
+### 10.5 OpenCode Desktop (v2, später)
+
+v2 bringt eine Desktop-App mit experimenteller GUI-Plugin-API (`./gui-experimental`: Panels, Commands, Einstellungsseiten). Ein AiFlow-Panel mit Run-Status und Inbox ist als Ausbau vorgesehen (Phase 9). Bis dahin deckt die Web-UI das ab.
 
 ---
 
@@ -1064,7 +1218,7 @@ Oben gibt es eine Projektauswahl (Scope „Global“ oder ein konkretes Projekt)
 - **Tabs:** Identität · Modell · Werkzeuge & Rechte · MCP & Skills · Ausgabe · Verhalten · Testen
 - **Live-Vorschau** des zusammengesetzten System-Prompts (Identität + Bausteine + Projektregeln).
 - Die **Rechte** sind als Tabelle editierbar (Tool × allow/ask/deny, Muster-Listen), mit Presets und einem Hinweis bei riskanten Kombinationen (z. B. `bash: allow` ohne Denylist).
-- Die **MCP-Liste** kommt live aus dem Worker (`mcp.status`, `tool.list`), mit Status pro Server.
+- Die **MCP-Liste** kommt live aus dem Worker (v1 `mcp.status`, v2 `mcp.list`), mit Status pro Server.
 - **Ausgabe-Vertrag:** visueller Schema-Builder für die gängigen Feldtypen (Boolean, Enum, Text, Zahl, Liste von Objekten) und ein Monaco-JSON-Editor für den Rest.
 - **Playground:** Testet den Agenten mit einem Prompt in einem Scratch-Worktree. Transkript, Übergabe und Diff erscheinen nebeneinander, ohne dass ein Workflow nötig ist.
 
@@ -1215,7 +1369,8 @@ aiflow runs ls | show <id> | cancel <id> | resume <id> | apply <id> | discard <i
 aiflow workflows ls | validate <datei> | simulate <datei> --script <s> | export <id> | import <datei>
 aiflow agents ls | export <id> | import <datei>
 aiflow inbox [answer <id> <antwort>]
-aiflow doctor                                 Umgebung prüfen: git, opencode-Version, Provider, Ports, Rechte, Speicher
+aiflow setup opencode [--api auto|v1|v2]      AiFlow-Plugin global in opencode eintragen (Linie wird erkannt)
+aiflow doctor                                 Umgebung prüfen: git, opencode-Linie und -Version, Plugin aktiv, Provider, Ports, Rechte, Speicher
 ```
 
 `--follow` zeigt eine kompakte Live-Ansicht wie in der TUI-Seitenleiste. Mit `--finalize branch` lässt sich AiFlow headless einsetzen, z. B. in CI oder per Skript.
@@ -1255,7 +1410,8 @@ aiflow doctor                                 Umgebung prüfen: git, opencode-Ve
 | Integration | Vitest + temporäre git-Repos | workspace-git: Snapshots inkl. untracked, Worktrees, Checkpoints, 3-Wege-Übernahme, Konflikte | Jeder Commit |
 | Integration | Vitest + SQLite-Datei | store: Events, Projektionen, Migrationen | Jeder Commit |
 | API-Contract | Vitest + Hono-Testclient | server: Endpunkte, Auth, Host/Origin-Prüfung, SSE-Resume | Jeder Commit |
-| Runtime-Contract | Vitest gegen echtes `opencode serve` | runtime-opencode: Sessions, Rechte, `json_schema`, Fork, Abort | Nightly bzw. vor Release (braucht Modellzugang) |
+| Runtime-Contract | Vitest gegen echtes `opencode serve`, **Matrix v1 (1.19.x) und v2 (2.2.x)** | runtime-opencode: Sessions, Rechte, strukturierte Übergabe, Fork, Abbruch, Events | Nightly bzw. vor Release (braucht Modellzugang) |
+| Plugin-Smoke | opencode v1 und v2 | `opencode-aiflow` lädt in beiden Linien; Commands, Tools und Guards sind registriert und greifen | Jeder PR (ohne Modell), nightly mit Modell |
 | E2E | Playwright | Web-UI mit Daemon und FakeRuntime: Editor, Runs, Review | Jeder PR |
 | Round-trip | Vitest | YAML → Modell → YAML ist identisch (inkl. Kommentare) | Jeder Commit |
 
@@ -1303,6 +1459,7 @@ Umfang: S = klein, M = mittel, L = groß (relativ, für die Planung der Agenten-
 | P0-04 | CI (GitHub Actions): `pnpm check` |
 | P0-05 | `AGENTS.md`, ADR-Vorlage, ADR-001 „Architektur und Runtime-Adapter“ |
 | P0-06 | lefthook (pre-commit: Lint und Typecheck der geänderten Pakete) |
+| P0-07 | CI-Gerüst für Tests gegen opencode v1 und v2 (beide Linien installierbar, Versionen gepinnt) |
 
 **Akzeptanz:** Ein frischer Clone ist nach `pnpm i && pnpm check` grün. Ein Import über eine Paketgrenze hinweg lässt die CI scheitern.
 
@@ -1347,20 +1504,21 @@ Umfang: S = klein, M = mittel, L = groß (relativ, für die Planung der Agenten-
 
 | ID | Aufgabe |
 |---|---|
-| P3-00 | Spikes S1–S5 (Kapitel 17), Ergebnisse als ADRs |
+| P3-00 | Spikes S1–S5 und S8 (Kapitel 17), Ergebnisse als ADRs |
 | P3-01 | `workspace-git`: Basis-Snapshot inkl. untracked, Worktrees, versteckte Refs, Checkpoints, Diffs pro Schritt und gesamt, Aufräumen |
 | P3-02 | Workspace-Modi (`continue`, `isolate`, `read-only`, Schreibbereich, `scratch`), Setup-Befehl, Grenzprüfung |
 | P3-03 | Übernahme: 3-Wege-Merge, Konflikterkennung, Branch-Export, Patch-Export, Dokument-Export |
-| P3-04 | `runtime-opencode`: Worker-Prozessverwaltung, Health, Neustart, Versionsprüfung |
-| P3-05 | Session-Ausführung: create, prompt, stream, idle, finalize, abort, fork; Event-Mapping |
-| P3-06 | Abbildung Agent → opencode (System-Prompt, Modell, Tools, Permission-Ruleset, MCP) |
-| P3-07 | `opencode-worker-plugin`: Guards, `chat.params`, `shell.env`, Kompaktierungs-Hook, `aiflow_progress`, `aiflow_context` |
-| P3-08 | Weiterleitung von Rückfragen und Rechte-Anfragen (`question.*`, `permission.*`) |
-| P3-09 | Runtime-Contract-Tests gegen echtes opencode |
+| P3-04 | `runtime-opencode/common`: Worker-Prozessverwaltung, Passwort, Health, Neustart, Versionserkennung, Plugin-Prüfung |
+| P3-05 | Treiber v2: Sessions (`location`, `permissions`, `metadata`), Prompt, `wait`, `interrupt`, `fork`, Instruktions-Einträge, Event-Mapping, Übergabe per Tool |
+| P3-06 | Treiber v1: Sessions (`directory`, `permission`, `metadata`), `promptAsync`, `abort`, `fork`, Event-Mapping, Übergabe per `format: json_schema` |
+| P3-07 | Versionsneutrales Agenten-, Modell- und Rechte-Mapping → v1/v2, inkl. Warnung bei nicht exakt abbildbaren Regeln |
+| P3-08 | `opencode-plugin`: Kern (Guards, Übergabe-Validierung, Kontext) und Worker-Rolle in der v1- und der v2-Shell; kombinierter Einstiegspunkt (5.5.4) |
+| P3-09 | Weiterleitung von Rückfragen und Rechte-Anfragen (v1: `question.*`, `permission.*`; v2: Forms, `permission.*`) |
+| P3-10 | Runtime-Contract-Tests und Plugin-Smoke-Tests als Matrix v1/v2 |
 
 **Akzeptanz:**
 
-- Der Workflow „Plan → Implement → Checks → Review-Schleife → Ende (Branch)“ läuft auf `examples/demo-repo` mit echtem Modell vollständig durch.
+- Der Workflow „Plan → Implement → Checks → Review-Schleife → Ende (Branch)“ läuft auf `examples/demo-repo` mit echtem Modell vollständig durch, **mit opencode v1 und mit v2**.
 - Das Arbeitsverzeichnis des Nutzers bleibt bis zur Übernahme byte-identisch.
 - Ein Verstoß gegen die Dokument-Rechte wird blockiert und protokolliert.
 
@@ -1373,7 +1531,7 @@ Umfang: S = klein, M = mittel, L = groß (relativ, für die Planung der Agenten-
 | P4-03 | REST-Endpunkte, OpenAPI, typisierter `client` |
 | P4-04 | SSE (global und pro Run) mit Resume |
 | P4-05 | Definitions-Repository: global und Projekt, Datei-Watcher, Versionierung, Workspace-Trust |
-| P4-06 | CLI: `serve`, `stop`, `status`, `run --follow`, `runs`, `workflows`, `agents`, `inbox`, `doctor` |
+| P4-06 | CLI: `serve`, `stop`, `status`, `run --follow`, `runs`, `workflows`, `agents`, `inbox`, `setup opencode`, `doctor` |
 
 **Akzeptanz:**
 
@@ -1399,19 +1557,19 @@ Umfang: S = klein, M = mittel, L = groß (relativ, für die Planung der Agenten-
 
 **Akzeptanz:** Alle Beispiel-Workflows lassen sich ohne YAML-Bearbeitung im UI erstellen. Die gespeicherten Dateien sind semantisch identisch zu den Fixtures. Playwright-E2E deckt die Kernabläufe ab.
 
-### Phase 6 – opencode-Bridge (M)
+### Phase 6 – opencode-Plugin: Bridge-Rolle (M)
 
 | ID | Aufgabe |
 |---|---|
 | P6-00 | Spikes S6–S7 |
-| P6-01 | Paketstruktur (Server- und TUI-Modul), Verbindung, Auto-Start des Daemons |
+| P6-01 | Bridge-Rolle im Plugin-Kern, Shells für v1 und v2, Verbindung, Auto-Start des Daemons |
 | P6-02 | `/aiflow-configure` |
-| P6-03 | Workflow-Commands (dynamisch), Prompt-Durchreichung 1:1, Parameter-Dialog, `/aiflow-run` |
-| P6-04 | Seitenleisten-Panel und Statuszeile (live per SSE), `/aiflow-status`, `/aiflow-runs` |
+| P6-03 | Workflow-Commands, Prompt-Durchreichung 1:1, Parameter-Dialog, `/aiflow-run`. v2: `command.transform` + `reload()`; v1: TUI-Slash-Commands bzw. Fallback |
+| P6-04 | Live-Ansicht (per SSE bzw. v2-RPC): Seitenleisten-Panel, Statuszeile, Detailansicht (v1 Route, v2 Session-Panel), `/aiflow-status`, `/aiflow-runs` |
 | P6-05 | Dialoge: Mensch-Knoten, Rückfragen, Abschluss-Review (Kurzform), `/aiflow-inbox` |
 | P6-06 | Benachrichtigungen, optional Ergebnis in die Session einfügen, Tools `aiflow_run` und `aiflow_list_workflows` |
 
-**Akzeptanz:** Folgender Ablauf funktioniert in der opencode-TUI:
+**Akzeptanz:** Folgender Ablauf funktioniert in der opencode-TUI, jeweils mit v1 und mit v2:
 
 1. Workflow im Web anlegen.
 2. Der Command erscheint ohne Neustart (oder mit dokumentiertem, einmaligem Neustart, falls Spike S6 das erzwingt).
@@ -1450,7 +1608,10 @@ Umfang: S = klein, M = mittel, L = groß (relativ, für die Planung der Agenten-
 - Analytics und Run-Vergleich
 - Übernahme pro Hunk
 - Direct-LLM-Runtime
-- Attached Mode in der TUI
+- Attached Mode in der TUI (v2: über den gemeinsamen Hintergrunddienst, Agenten-Sessions als Tabs)
+- Panel für OpenCode Desktop (v2, GUI-Teil `./gui-experimental`)
+- Eingebetteter Worker über `@opencode/sdk` (v2, abhängig von Spike S9)
+- v1-Unterstützung entfernen, sobald sie nicht mehr gebraucht wird (ADR)
 - Workflow-Pakete teilen (Export inkl. Agenten und Bausteinen)
 - Weitere Punkte aus [Kapitel 19](#19-backlog--spätere-ideen)
 
@@ -1733,28 +1894,31 @@ flowchart LR
 
 | Risiko | Gegenmaßnahme |
 |---|---|
-| opencode-API ändert sich (schnelle Releases, v2-Plugin-API experimentell) | Der Adapter kapselt alles. Unterstützter Versionsbereich, Runtime-Contract-Tests. Im Kernpfad nur stabile v1-Hooks. |
-| Strukturierte Ausgaben sind mit dem Flash-Modell unzuverlässig | `retryCount`, Zod-Validierung mit präziser Nachforderung, Fallback-Parser, mehrere Stimmen, konservativer Fallback-Zweig |
-| Ressourcenlast bei vielen Worktrees (Abhängigkeiten, LSP-Prozesse, Plattenplatz) | Setup-Cache (pnpm-Store), Parallelitätslimits, LSP für Worker-Sessions begrenzen, Aufräum-Jobs, Speicheranzeige in `doctor` |
+| opencode-API ändert sich: v1 läuft aus, v2 ist neu und entwickelt sich schnell (einige genutzte APIs sind experimentell, z. B. `experimental.idle`, `generate.decisions`, GUI-Teil) | Zwei Treiber und zwei Plugin-Shells hinter versionsneutralen Interfaces, Fähigkeiten statt Versionsnummern, gepinnte Versionsbereiche, Matrix-Tests. Experimentelle v2-APIs nur mit Fallback. |
+| Doppelter Wartungsaufwand für v1 und v2 | Logik ausschließlich im gemeinsamen Kern, Shells und Treiber dünn halten, Matrix-Tests; v1-Support-Fenster per ADR begrenzen |
+| Strukturierte Übergaben sind mit dem Flash-Modell unzuverlässig | v1 `retryCount`, v2 Tool-Schema mit Fehlerrückmeldung und Nachforderung im Leerlauf; Zod-Validierung mit präziser Nachforderung, Fallback-Parser, mehrere Stimmen, konservativer Fallback-Zweig |
+| Ressourcenlast bei vielen Worktrees (Abhängigkeiten, Plattenplatz, unter v1 auch LSP-Prozesse) | Setup-Cache (pnpm-Store), Parallelitätslimits, unter v1 LSP für Worker-Sessions begrenzen, Aufräum-Jobs, Speicheranzeige in `doctor` |
 | Agenten umgehen Dateirechte über `bash` | Dreistufige Durchsetzung plus Integritätsprüfung, Grenzprüfung des Diffs, Bash-Allowlist-Presets |
 | Endlosschleifen und lange Läufe | Pflicht-Limits, Run-Budgets, Stagnationserkennung, Eskalation an den Menschen |
 | Merge-Konflikte bei der Übernahme | Basis-Snapshot, 3-Wege-Merge, Konfliktanzeige, Branch-Export als Ausweg |
 | Daemon- oder Worker-Absturz während eines Runs | Event-Sourcing, Checkpoints, Wiederaufnahme, Worker-Neustart mit Schritt-Retry |
 | Angriff über den lokalen HTTP-Server | Token, Host- und Origin-Prüfung, nur localhost, Workspace-Trust |
-| Kontextüberlauf im Modus `resume` | opencode-Kompaktierung plus Kompaktierungs-Hook mit AiFlow-Pflichtkontext; Standard bleibt `fresh` |
+| Kontextüberlauf im Modus `resume` | opencode-Kompaktierung plus Kompaktierungs-Hook mit AiFlow-Pflichtkontext (v2 zusätzlich Instruktions-Einträge); Standard bleibt `fresh` |
 | Der Editor wird zu komplex | Strikte Validierung mit klaren Meldungen, Vorlagen, Simulation, gute Standardwerte |
 
 ### 17.2 Spikes (vor der jeweiligen Phase, Ergebnis jeweils als ADR)
 
-| ID | Frage | Phase |
-|---|---|---|
-| S1 | Ersetzt oder ergänzt `system` beim Prompt den Agent-Prompt? Werden `AGENTS.md` und Projektregeln weiterhin geladen? | 3 |
-| S2 | Semantik von Session-`permission` (Pfadmuster für `read` / `edit` / `external_directory`, Priorität der Regeln, Zusammenspiel mit der Nutzerkonfiguration) | 3 |
-| S3 | Zuverlässigkeit und Latenz von `format: json_schema` mit DeepSeek V4.1 Flash, Verhalten von `retryCount` | 3 |
-| S4 | Mehrere Verzeichnisse parallel in einem Worker: Isolation, LSP-Prozesse, Speicher, Startzeit | 3 |
-| S5 | Worker-Plugin und Zusatzkonfiguration laden, ohne die Dateien des Nutzers zu ändern; Server-Passwort | 3 |
-| S6 | TUI-Plugin: Slash-Commands mit Argumenten, dynamisches (De-)Registrieren, ein Paket mit Server- und TUI-Modul | 6 |
-| S7 | `command.execute.before`: Rohargumente abfangen und den LLM-Aufruf vermeiden oder minimieren | 6 |
+| ID | Linie | Frage | Phase |
+|---|---|---|---|
+| S1 | v1 / v2 | v1: Ersetzt oder ergänzt `system` beim Prompt den Agent-Prompt? v2: Wirken Agenten per `agent.transform` plus `context`-Hook pro Session wie gewünscht? Beide: Werden `AGENTS.md` und Projektregeln im Worktree geladen? | 3 |
+| S2 | v1 / v2 | Semantik der Session-Rechte: Pfadmuster für `read`, `edit`, `external_directory`; Reihenfolge und Priorität gegenüber Agent- und Nutzerregeln; Aktionsnamen für MCP-Tools | 3 |
+| S3 | v1 / v2 | Strukturierte Übergabe mit DeepSeek V4.1 Flash: v1 `format: json_schema` (Zuverlässigkeit, `retryCount`, Latenz); v2 Übergabe-Tool mit Schema per `context`-Hook und Nachforderung per `experimental.idle` | 3 |
+| S4 | v1 | Mehrere Verzeichnisse parallel in einem Worker: Isolation, LSP-Prozesse, Speicher, Startzeit | 3 |
+| S5 | v1 / v2 | Rollenwahl per `AIFLOW_WORKER`, Plugin-Prüfung über die Plugin-Liste, Passwortschutz des Workers | 3 |
+| S6 | v1 / v2 | TUI-Teil: v1 Slash-Commands mit Argumenten, Laden des TUI-Teils, kombinierter TUI-Export möglich? v2 reaktiver Keymap-Layer, Session-Panel, `session.synthetic` ohne Modellantwort | 6 |
+| S7 | v1 | `command.execute.before`: Rohargumente abfangen und den LLM-Aufruf vermeiden oder minimieren | 6 |
+| S8 | v1 / v2 | Kombinierter Einstiegspunkt lädt in v1 (≥ 1.18.29) und v2; keine Konflikte durch versionsspezifische Imports oder `effect` | 3 |
+| S9 | v2 | Läuft `@opencode/sdk` (eingebetteter Host) unter Node oder nur unter Bun? Lohnt sich der eingebettete Worker? | 9 |
 
 ---
 
@@ -1771,12 +1935,15 @@ Zu jeder Frage gibt es eine Empfehlung. Der Plan geht von der Empfehlung aus, so
 | 5 | Strukturierte Parallelität erzwingen oder freie Graphen erlauben? | **Erzwingen**, vermeidet Deadlocks und unklare Joins |
 | 6 | Veröffentlichung: nur intern oder als npm-Paket? | Zunächst intern, Paketnamen frühzeitig reservieren |
 | 7 | Standard-Abschluss neuer Workflows | **`review`**: sicher, und der Nutzer sieht immer, was passiert |
+| 8 | Primäre opencode-Linie | **v2** als Referenz für neue Funktionen; v1 voll unterstützt, solange es im Team genutzt wird |
+| 9 | Plugin-Installation | **Global** über `aiflow setup opencode`, damit Worker und TUI dasselbe Plugin laden |
 
 ---
 
 ## 19. Backlog / spätere Ideen
 
-- **Attached Mode:** Agenten-Sessions als Child-Sessions in der opencode-TUI, live hineinspringen.
+- **Attached Mode:** Agenten-Sessions als Child-Sessions in der opencode-TUI, live hineinspringen (v2: als Tabs über den gemeinsamen Hintergrunddienst).
+- **OpenCode Desktop (v2):** AiFlow-Panel mit Run-Status und Inbox als GUI-Teil.
 - **Weitere Runtimes:** Direct-LLM (OpenAI-kompatibel), Claude Code, andere Agent-CLIs, Remote-Worker.
 - **Trigger:** Runs per Webhook, GitHub-Issue, Label oder Zeitplan starten (z. B. nächtlicher „Dependency-Update“-Workflow).
 - **Workflow-Pakete teilen:** Export-Bundles inkl. Agenten, Bausteinen und Vorlagen; eine kleine Galerie.
