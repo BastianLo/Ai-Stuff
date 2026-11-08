@@ -108,7 +108,7 @@ export class SimulationRuntime implements AgentRuntime {
     if (props.output) {
       out.output = sampleFromSchema(props.output, {
         approved: !rejecting,
-        findings: rejecting ? [{ severity: "high", file: `src/${slugify(topic)}.ts`, line: 14, message: "Token wird im Klartext geloggt" }] : [],
+        findings: rejecting ? [{ severity: "high", file: `src/${slugify(topic)}.js`, line: 4, message: "Token wird im Klartext geloggt" }] : [],
         tasks: [`Datenmodell für ${topic}`, `API-Endpunkt für ${topic}`, `Tests für ${topic}`],
         gaps: [],
         openQuestions: [],

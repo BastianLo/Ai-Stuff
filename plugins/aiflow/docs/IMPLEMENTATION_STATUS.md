@@ -26,5 +26,9 @@ Arbeitsnotizen für die Umsetzung von PLAN.md, Phasen 0–8. Wird nach jedem Sch
 - [x] P5 Web I: Agenten-Editor (alle Tabs, Playground), Bausteine, Workflow-Editor (Drag & Drop, Ports, Inspector, Zugriffs-Matrix, Live-Validierung, Testlauf, YAML, Undo/Redo)
 - [~] P6 Plugin Bridge-Rolle (v1/v2 Server + TUI geschrieben, typgeprüft gegen echte APIs; 6 Tests; Smoke-Test mit echtem opencode offen)
 - [x] P7 Web II: Run-Ansicht (Live-Graph, Gantt, Schritt-Details mit Prompt/Verlauf/Diff), Review (Teil-Übernahme, Änderungen anfordern, Branch), History, Inbox, Dashboard
-- [ ] P8 Für-jedes, Sub-Workflows, Sub-Agenten, Stimmen, Simulation, Playground
-- [ ] Tests + Screenshots (docs/screenshots)
+- [x] P8 Für-jedes, Sub-Workflows, Sub-Agenten (Wellen, Budgets, erzwungen/optional), Stimmen, Simulation, Playground, Stagnationserkennung bei Schleifen
+- [x] Tests: 96 Unit/Integration (`pnpm check`), 7 Playwright-E2E (`pnpm test:e2e`)
+- [x] Screenshots: `docs/screenshots` (16 Bilder, `node scripts/screenshots.mjs`)
+
+## Offen
+- Smoke-Test mit echtem opencode v1/v2 und Modell (Spikes S1–S10 aus PLAN.md); TUI-Teile nie in einer echten TUI ausgeführt.

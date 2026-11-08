@@ -2,7 +2,7 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["examples/**", "**/*.tsx", "**/dist/**", "**/node_modules/**", "**/coverage/**", "e2e/**", "packages/web/**", "**/*.config.*", "eslint.config.js", ".dependency-cruiser.cjs"] },
+  { ignores: ["examples/**", "**/*.tsx", "**/dist/**", "**/node_modules/**", "**/coverage/**", "e2e/**", "scripts/**", "packages/web/**", "**/*.config.*", "eslint.config.js", ".dependency-cruiser.cjs"] },
   js.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   {

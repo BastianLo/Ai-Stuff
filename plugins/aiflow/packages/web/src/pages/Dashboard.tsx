@@ -62,7 +62,7 @@ export function Dashboard() {
           </Card>
           <Card title="Zuletzt" actions={<Link to={`/runs${q}`} className="text-xs font-medium text-indigo-600">Alle Runs</Link>}>
             {recent.length === 0 ? (
-              <Empty title="Noch keine Runs" />
+              <Empty title="Noch keine abgeschlossenen Runs" />
             ) : (
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                 {recent.map((r) => (

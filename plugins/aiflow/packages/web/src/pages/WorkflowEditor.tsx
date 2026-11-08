@@ -299,6 +299,7 @@ function Editor({ initial, scope, version }: { initial: Workflow; scope: "global
             }}
             fitView
             fitViewOptions={{ padding: 0.15 }}
+            minZoom={0.1}
             deleteKeyCode={["Delete", "Backspace"]}
             defaultEdgeOptions={{ type: "aiflow" }}
           >

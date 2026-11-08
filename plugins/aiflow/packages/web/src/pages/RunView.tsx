@@ -276,7 +276,7 @@ function Content({ run }: { run: RunViewData }) {
       </div>
       <div className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1">
-          <ReactFlow nodes={graph.nodes} edges={graph.edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView fitViewOptions={{ padding: 0.12 }} nodesDraggable={false} nodesConnectable={false} onNodeClick={(_, n) => setSelected([...run.steps].reverse().find((s) => s.nodeId === n.id && !s.parentStepId)?.id)}>
+          <ReactFlow nodes={graph.nodes} edges={graph.edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} fitView fitViewOptions={{ padding: 0.12 }} minZoom={0.1} nodesDraggable={false} nodesConnectable={false} onNodeClick={(_, n) => setSelected([...run.steps].reverse().find((s) => s.nodeId === n.id && !s.parentStepId)?.id)}>
             <Background gap={20} size={1} />
             <Controls showInteractive={false} />
             <AutoFit />
