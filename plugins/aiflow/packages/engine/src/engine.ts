@@ -41,6 +41,7 @@ import {
 } from "@aiflow/core";
 import { buildStepPrompt, buildSystemPrompt, type JournalEntry } from "./context.js";
 import type {
+  AskRequest,
   AgentStepContext,
   AgentStepRequest,
   DelegationOffer,
@@ -896,20 +897,21 @@ class RunController {
     }
   }
 
-  private askFromAgent(step: StepRecord, q: { question: string; options: string[] }): Promise<string> {
+  private askFromAgent(step: StepRecord, q: AskRequest): Promise<string> {
+    const kind = q.kind ?? "question";
     const item: InboxItem = {
       id: this.deps.ids.next("inbox"),
       runId: this.state.id,
       stepId: step.id,
-      kind: "question",
-      title: `Rückfrage von ${step.label}`,
+      kind,
+      title: q.title ?? (kind === "permission" ? `Erlaubnis für ${step.label}` : `Rückfrage von ${step.label}`),
       question: q.question,
       options: q.options,
       allowFreeText: true,
       createdAt: this.deps.clock.now(),
     };
     this.state.inbox.push(item);
-    this.emit("input.requested", { itemId: item.id, question: item.question, options: item.options, kind: "question" }, step.id);
+    this.emit("input.requested", { itemId: item.id, question: item.question, options: item.options, kind }, step.id);
     this.save();
     return new Promise((resolve) => {
       this.pendingAnswers.set(item.id, (answer) => resolve(answer.text ?? answer.option));
@@ -983,8 +985,9 @@ class RunController {
       delegation: SubagentSettings | undefined;
     },
   ): PermissionRule[] {
+    // Alles, was weder Preset noch Agent regeln (Plugin-Tools, Skills, Pfade außerhalb), bleibt bei opencode:
+    // erlaubt oder „ask“ – Rückfragen beantwortet die Runtime nach `permissions.onAsk`.
     const rules: PermissionRule[] = [...presetRules(agent.permissions.preset), ...mcpRules(agent.mcp), ...agent.permissions.rules];
-    if (agent.permissions.questions) rules.push({ action: "question", resource: "*", effect: "allow" });
     if (opts.readOnly) rules.push({ action: "edit", resource: "*", effect: "deny" });
     if (opts.writeScope) {
       rules.push({ action: "edit", resource: "*", effect: "deny" });
@@ -995,8 +998,12 @@ class RunController {
         if (!opts.delegation.keepTools.includes(action)) rules.push({ action, resource: "*", effect: "deny" });
       }
     }
-    rules.push({ action: "subagent", resource: "*", effect: "deny" });
-    rules.push({ action: "external_directory", resource: "*", effect: "deny" });
+    if (!agent.permissions.nativeSubagents || opts.delegation?.mode === "enforced") rules.push({ action: "subagent", resource: "*", effect: "deny" });
+    // Das Original-Projekt ist tabu: Änderungen gehen nur über den Worktree und das Review.
+    const project = this.state.spec.projectDir.replace(/\/+$/, "");
+    if (!opts.workspacePath.startsWith(`${project}/`)) {
+      for (const action of ["external_directory", "edit"]) rules.push({ action, resource: project, effect: "deny" }, { action, resource: `${project}/*`, effect: "deny" });
+    }
     // Dokumente: Zugriff ausschließlich nach Freigabe
     for (const name of Object.keys(this.workflow.documents)) {
       const path = this.deps.documents.path(this.state.id, name);

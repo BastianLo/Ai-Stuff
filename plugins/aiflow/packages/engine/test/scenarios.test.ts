@@ -260,6 +260,9 @@ describe("Sub-Agenten", () => {
     // Erzwungene Delegation sperrt auch MCP-Tools; andere Agenten behalten ihren MCP-Standard
     expect(orchestrator?.permissions).toContainEqual({ action: "mcp", resource: "*", effect: "deny" });
     expect(h.runtime.callsFor("plan")[0]?.permissions).toContainEqual({ action: "mcp", resource: "*", effect: "allow" });
+    // Native opencode-Sub-Agenten: beim Planner erlaubt, bei erzwungener AiFlow-Delegation gesperrt
+    expect(h.runtime.callsFor("plan")[0]?.permissions).not.toContainEqual({ action: "subagent", resource: "*", effect: "deny" });
+    expect(orchestrator?.permissions).toContainEqual({ action: "subagent", resource: "*", effect: "deny" });
     expect(h.runtime.callsFor("plan")[0]?.prompt).toContain("Ergebnisse der Sub-Agenten");
   });
 
@@ -403,5 +406,22 @@ describe("Wiederaufnahme nach Absturz", () => {
     expect(state.status).toBe("review_pending");
     expect(Object.values(state.steps).filter((s) => s.nodeId === "plan" && s.status === "completed")).toHaveLength(1);
     expect(Object.values(state.steps).some((s) => s.error?.includes("Unterbrochen"))).toBe(true);
+  });
+});
+
+describe("Gleichstellung mit normalen opencode-Sessions", () => {
+  it("überlässt Ungeregeltes opencode, sperrt aber das Original-Projekt", async () => {
+    const h = createHarness({ script: { plan: { docs: { "plan.md": "# Plan" } } } });
+    await h.run("feature-review");
+    const request = h.runtime.callsFor("plan")[0];
+    const rules = request?.permissions ?? [];
+    // Kein pauschales Verbot außerhalb des Worktrees mehr: opencode fragt, AiFlow beantwortet nach onAsk
+    expect(rules).not.toContainEqual({ action: "external_directory", resource: "*", effect: "deny" });
+    expect(rules.filter((r) => r.action === "*")).toEqual([]);
+    const project = "/project";
+    expect(rules).toContainEqual({ action: "edit", resource: `${project}/*`, effect: "deny" });
+    expect(rules).toContainEqual({ action: "external_directory", resource: `${project}/*`, effect: "deny" });
+    expect(request?.agent.permissions).toMatchObject({ onAsk: "inbox", questions: true, nativeSubagents: true });
+    expect(request?.systemPrompt).toContain("aiflow_ask");
   });
 });

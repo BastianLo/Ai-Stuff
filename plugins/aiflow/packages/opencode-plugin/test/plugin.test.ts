@@ -4,7 +4,7 @@ import { checksFor, guardToolCall, WorkerApi, type WorkerSessionInfo } from "../
 import { WorkerHooks } from "../src/core/worker-hooks.js";
 import { statusLines, formatDuration } from "../src/core/bridge.js";
 import { resolveOptions, serveArgs, workerEnv } from "../src/core/config.js";
-import { delegateSchema, WORKER_TOOL_NAMES } from "../src/core/tools.js";
+import { delegateSchema, visibleWorkerTools, WORKER_TOOL_NAMES } from "../src/core/tools.js";
 import { createHarness } from "@aiflow/testkit";
 import type { RunView } from "@aiflow/client";
 
@@ -23,6 +23,8 @@ const info: WorkerSessionInfo = {
   ],
   phase: "work",
   handoffReceived: false,
+  questions: true,
+  subSession: false,
 };
 
 describe("kombinierter Einstiegspunkt", () => {
@@ -53,6 +55,23 @@ describe("Guard der Worker-Rolle", () => {
   });
 });
 
+describe("Gleichstellung mit normalen Sessions", () => {
+  it("lässt Plugin-Tools (z. B. Skill-/Wissenssuche) und Skills ohne Regel durch", () => {
+    for (const tool of ["skill_search", "skill_list", "skill", "todowrite", "lsp_hover"]) expect(guardToolCall(info, tool, { query: "auth" })).toBeUndefined();
+    // Nur eine ausdrückliche Regel sperrt ein Plugin-Tool
+    const blocked = { ...info, permissions: [...info.permissions, { action: "skill_*", resource: "*", effect: "deny" as const }] };
+    expect(guardToolCall(blocked, "skill_search", {})).toContain("nicht erlaubt");
+  });
+
+  it("zeigt Kind-Sessions nur Fragen und Fortschritt, dem Schritt alle passenden AiFlow-Tools", () => {
+    expect([...visibleWorkerTools(info)].sort()).toEqual(["aiflow_ask", "aiflow_context", "aiflow_handoff", "aiflow_progress"]);
+    expect([...visibleWorkerTools({ ...info, delegation: { allowed: [], mode: "optional", maxParallel: 1, remainingRuns: 1 } })]).toContain("aiflow_delegate");
+    expect([...visibleWorkerTools({ ...info, subSession: true })].sort()).toEqual(["aiflow_ask", "aiflow_progress"]);
+    expect([...visibleWorkerTools({ ...info, questions: false, subSession: true })]).toEqual(["aiflow_progress"]);
+    expect(visibleWorkerTools(null).size).toBe(0);
+  });
+});
+
 describe("Worker-Hooks gegen die Worker-API", () => {
   function fakeFetch(responses: Record<string, unknown>): typeof fetch {
     return (async (url: string | URL | Request, init?: RequestInit) => {
@@ -62,6 +81,26 @@ describe("Worker-Hooks gegen die Worker-API", () => {
       return new Response(body === undefined ? "" : JSON.stringify(body), { status: body === undefined ? 404 : 200 });
     });
   }
+
+  it("wartet auf lange Aufträge per Abfrage statt einem langen Request (Rückfrage, Delegation)", async () => {
+    let polls = 0;
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      const href = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+      if (init?.method === "POST" && href.endsWith("/sessions/s1/ask")) {
+        expect(JSON.parse(typeof init.body === "string" ? init.body : "")).toEqual({ question: "A oder B?", options: ["A", "B"] });
+        return new Response(JSON.stringify({ job: "job_1" }));
+      }
+      if (href.endsWith("/jobs/job_1")) return new Response(JSON.stringify(++polls < 3 ? { state: "running" } : { state: "done", result: "B" }));
+      if (init?.method === "POST" && href.endsWith("/sessions/s1/delegate")) return new Response(JSON.stringify({ job: "job_2" }));
+      if (href.endsWith("/jobs/job_2")) return new Response(JSON.stringify({ state: "failed", error: { code: "FORBIDDEN", message: "keine Sub-Agenten" } }));
+      return new Response("", { status: 404 });
+    }) as typeof fetch;
+    const hooks = new WorkerHooks(new WorkerApi({ daemonUrl: "http://d", token: "t" }, fetchImpl, 1));
+    expect(await hooks.ask("s1", { question: "A oder B?", options: ["A", "B", 3] })).toBe("Antwort des Nutzers: B");
+    expect(polls).toBe(3);
+    await expect(hooks.delegate("s1", { tasks: [] })).rejects.toThrow("keine Sub-Agenten");
+    await expect(hooks.ask("s1", { question: " " })).rejects.toThrow("question fehlt");
+  });
 
   it("liefert Session-Infos, Umgebung und Nachforderung der Übergabe", async () => {
     const api = new WorkerApi({ daemonUrl: "http://d", token: "t" }, fakeFetch({ "GET /sessions/s1": { ...info, phase: "finalize" }, "POST /sessions/s1/handoff": { ok: false, error: "fehlt" } }));

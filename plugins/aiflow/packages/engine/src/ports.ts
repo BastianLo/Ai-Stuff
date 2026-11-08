@@ -130,11 +130,19 @@ export interface DelegationResult {
   message?: string;
 }
 
+export interface AskRequest {
+  question: string;
+  options: string[];
+  kind?: "question" | "permission";
+  title?: string;
+}
+
 export interface AgentStepContext {
   signal: AbortSignal;
   activity(activity: StepActivity): void;
   delegate(tasks: DelegationTask[]): Promise<DelegationResult>;
-  ask(question: { question: string; options: string[] }): Promise<string>;
+  /** Frage an den Nutzer (Inbox). `kind: "permission"` für Rückfragen der Runtime zu Rechten. Liefert Option oder Freitext. */
+  ask(question: AskRequest): Promise<string>;
 }
 
 export interface AgentStepResult {

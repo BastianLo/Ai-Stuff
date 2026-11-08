@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AgentStepContext, AgentStepRequest } from "@aiflow/engine";
 import { agentSchema, buildHandoffSchema } from "@aiflow/core";
 import { createHarness, sampleFromSchema } from "@aiflow/testkit";
-import { expandMcpRules, extractJson, mapV1Event, mapV2Event, mcpToolPrefix, OpencodeRuntime, toV1Rules, toV2Rules, V1Driver, V2Driver, WorkerBridge, type V1Client, type V2Client } from "@aiflow/runtime-opencode";
+import { expandMcpRules, extractJson, mapV1Event, mapV2Event, mcpToolPrefix, OpencodeRuntime, PERMISSION_OPTIONS, toV1Rules, toV2Rules, V1Driver, V2Driver, WorkerBridge, type V1Client, type V2Client } from "@aiflow/runtime-opencode";
 
 const schema = buildHandoffSchema({ branches: [{ port: "approved", description: "ok", instructions: [] }, { port: "rejected", description: "nok", instructions: [] }] });
 
@@ -57,6 +57,7 @@ function v1Client(structured: (n: number) => unknown): V1Client & { calls: Recor
     event: { subscribe: async () => ({ stream: (async function* () {})() }) },
     provider: { list: async () => ({ data: { all: [{ id: "deepseek", models: { "deepseek-v4.1-flash": { name: "DeepSeek V4.1 Flash" } } }] } }) },
     mcp: { status: async () => ({ data: { context7: { status: "connected" } } }) },
+    permission: { reply: async (p) => (calls.push({ reply: p }), { data: true }) },
     config: { get: async () => ({ data: { plugin: ["opencode-aiflow"] } }) },
   };
 }
@@ -100,7 +101,16 @@ describe("V1-Treiber", () => {
       sessionId: "s",
       activity: { kind: "tool", tool: "edit", status: "succeeded", input: undefined, output: "ok" },
     });
-    expect(mapV1Event({ type: "message.part.updated", properties: { part: { sessionID: "s", type: "text", text: "fertig", time: { end: 1 } } } })?.activity).toEqual({ kind: "text", text: "fertig" });
+    expect(mapV1Event({ type: "message.part.updated", properties: { part: { sessionID: "s", type: "text", text: "fertig", time: { end: 1 } } } })).toEqual({ sessionId: "s", activity: { kind: "text", text: "fertig" } });
+    expect(mapV1Event({ type: "session.created", properties: { sessionID: "c", info: { id: "c", parentID: "p" } } })).toEqual({ type: "session.created", sessionId: "c", parentId: "p" });
+    expect(mapV1Event({ type: "session.created", properties: { sessionID: "x", info: { id: "x" } } })).toBeUndefined();
+    expect(mapV1Event({ type: "permission.asked", properties: { id: "per_1", sessionID: "s", permission: "external_directory", patterns: ["/etc/*"], metadata: {}, always: [] } })).toEqual({
+      type: "permission.asked",
+      sessionId: "s",
+      requestId: "per_1",
+      action: "external_directory",
+      resources: ["/etc/*"],
+    });
   });
 });
 
@@ -128,6 +138,7 @@ describe("V2-Treiber", () => {
       event: { subscribe: () => (async function* () {})() },
       model: { list: async () => [{ providerID: "deepseek", id: "deepseek-v4.1-flash", name: "Flash" }] },
       plugin: { list: async () => [{ id: "aiflow" }] },
+      permission: { reply: async (i) => void calls.push({ reply: i }) },
     };
   }
 
@@ -165,14 +176,113 @@ describe("V2-Treiber", () => {
   });
 
   it("mappt v2-Events", () => {
-    expect(mapV2Event({ type: "session.tool.called", data: { sessionID: "s", tool: "read" } })?.activity).toMatchObject({ kind: "tool", tool: "read", status: "called" });
-    expect(mapV2Event({ type: "session.text.ended", data: { sessionID: "s", text: "Hallo" } })?.activity).toEqual({ kind: "text", text: "Hallo" });
+    expect(mapV2Event({ type: "session.tool.called", data: { sessionID: "s", tool: "read" } })).toMatchObject({ activity: { kind: "tool", tool: "read", status: "called" } });
+    expect(mapV2Event({ type: "session.text.ended", data: { sessionID: "s", text: "Hallo" } })).toEqual({ sessionId: "s", activity: { kind: "text", text: "Hallo" } });
+    expect(mapV2Event({ type: "session.created", data: { sessionID: "c", parentID: "p" } })).toEqual({ type: "session.created", sessionId: "c", parentId: "p" });
+    expect(mapV2Event({ type: "permission.asked", data: { id: "per_2", sessionID: "s", action: "skill_search", resources: ["*"] } })).toEqual({
+      type: "permission.asked",
+      sessionId: "s",
+      requestId: "per_2",
+      action: "skill_search",
+      resources: ["*"],
+    });
     expect(mapV2Event({ type: "session.idle", data: {} })).toBeUndefined();
   });
 
   it("findet JSON in Text", () => {
     expect(extractJson('blabla {"a":1} und ```json\n{"b":2}\n```')).toEqual({ b: 2 });
     expect(extractJson("nichts")).toBeUndefined();
+  });
+});
+
+describe("Rückfragen von opencode und native Sub-Agenten", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  const asked = (sessionId: string, requestId: string, action = "external_directory", resources = ["/home/u/notes/*"]) => ({ type: "permission.asked" as const, sessionId, requestId, action, resources });
+
+  function setup(onAsk: "inbox" | "allow" | "deny", answers: string[] = []) {
+    const client = v1Client(() => undefined);
+    const bridge = new WorkerBridge();
+    const runtime = new OpencodeRuntime(new V1Driver(client), bridge);
+    const ask = vi.fn(async () => answers.shift() ?? PERMISSION_OPTIONS.reject);
+    const ctx = { ...context(), ask };
+    const agent = agentSchema.parse({ id: "impl", name: "Implementer", permissions: { preset: "implement", onAsk } });
+    bridge.bind("ses_step", request({ agent }), ctx);
+    const replies = () => client.calls.filter((c) => c.reply).map((c) => c.reply as Record<string, unknown>);
+    return { client, bridge, runtime, ask, replies };
+  }
+
+  it("onAsk=allow erlaubt einmalig, onAsk=deny lehnt mit Begründung für das Modell ab", async () => {
+    const allow = setup("allow");
+    allow.runtime.handle(asked("ses_step", "per_1"));
+    await flush();
+    expect(allow.replies()).toEqual([{ requestID: "per_1", reply: "once", directory: "/tmp/ws" }]);
+    const deny = setup("deny");
+    deny.runtime.handle(asked("ses_step", "per_2"));
+    await flush();
+    expect(deny.replies()[0]).toMatchObject({ requestID: "per_2", reply: "reject", message: expect.stringContaining("nicht freigegeben") });
+    expect(deny.ask).not.toHaveBeenCalled();
+  });
+
+  it("onAsk=inbox fragt den Nutzer; „für diesen Schritt“ gilt für weitere gleiche Aktionen, Freitext wird zur Korrektur", async () => {
+    const t = setup("inbox", [PERMISSION_OPTIONS.step, "Nicht dort – nimm docs/notes im Repo."]);
+    t.runtime.handle(asked("ses_step", "per_1"));
+    await flush();
+    expect(t.ask).toHaveBeenCalledWith(expect.objectContaining({ kind: "permission", options: Object.values(PERMISSION_OPTIONS) }));
+    t.runtime.handle(asked("ses_step", "per_2", "external_directory", ["/other/*"]));
+    await flush();
+    expect(t.ask).toHaveBeenCalledTimes(1);
+    t.runtime.handle(asked("ses_step", "per_3", "read", [".env"]));
+    await flush();
+    expect(t.replies()).toEqual([
+      { requestID: "per_1", reply: "once", directory: "/tmp/ws" },
+      { requestID: "per_2", reply: "once", directory: "/tmp/ws" },
+      { requestID: "per_3", reply: "reject", directory: "/tmp/ws", message: expect.stringContaining("Nicht dort") },
+    ]);
+  });
+
+  it("ignoriert Rückfragen fremder Sessions", async () => {
+    const t = setup("allow");
+    t.runtime.handle(asked("ses_fremd", "per_9"));
+    await flush();
+    expect(t.replies()).toEqual([]);
+  });
+
+  it("ordnet Kind-Sessions nativer Sub-Agenten dem Schritt zu: Regeln, Rückfragen, kein AiFlow-Prompt", async () => {
+    const t = setup("allow");
+    t.runtime.handle({ type: "session.created", sessionId: "ses_child", parentId: "ses_step" });
+    t.runtime.handle({ type: "session.created", sessionId: "ses_grandchild", parentId: "ses_child" });
+    t.runtime.handle({ type: "session.created", sessionId: "ses_other", parentId: "ses_unbekannt" });
+    expect(t.bridge.info("ses_grandchild")).toMatchObject({ stepId: "step_1", subSession: true });
+    expect(t.bridge.info("ses_step").subSession).toBe(false);
+    expect(t.bridge.has("ses_other")).toBe(false);
+    expect(t.bridge.guard("ses_child", "shell", "git push origin")).toMatchObject({ allow: false });
+    t.runtime.handle(asked("ses_child", "per_c"));
+    await flush();
+    expect(t.replies()).toEqual([{ requestID: "per_c", reply: "once", directory: "/tmp/ws" }]);
+    expect(() => t.bridge.submitHandoff("ses_child", {})).toThrow(/keinem laufenden/);
+    t.bridge.unbind("ses_step");
+    expect(t.bridge.has("ses_child")).toBe(false);
+  });
+
+  it("leitet Aktivität der Kind-Sessions an den Schritt weiter und beantwortet Rückfragen per v2-API", async () => {
+    const bridge = new WorkerBridge();
+    const calls: Record<string, unknown>[] = [];
+    const client = { permission: { reply: async (i: Record<string, unknown>) => void calls.push(i) } } as unknown as V2Client;
+    const runtime = new OpencodeRuntime(new V2Driver({ ...client, event: { subscribe: () => (async function* () {})() } }), bridge);
+    bridge.bind("s", request({ agent: agentSchema.parse({ id: "a", name: "A", permissions: { onAsk: "allow" } }) }), context());
+    runtime.handle({ type: "session.created", sessionId: "c", parentId: "s" });
+    runtime.handle(asked("c", "per_v2"));
+    await flush();
+    expect(calls).toEqual([{ sessionID: "c", requestID: "per_v2", decision: "once" }]);
+  });
+
+  it("Rückfragen an den Nutzer (aiflow_ask) gehen in die Inbox – auch aus Kind-Sessions, abschaltbar pro Agent", async () => {
+    const t = setup("inbox", ["Variante B"]);
+    t.runtime.handle({ type: "session.created", sessionId: "ses_child", parentId: "ses_step" });
+    expect(await t.bridge.ask("ses_child", "A oder B?", ["A", "B"])).toBe("Variante B");
+    const off = new WorkerBridge();
+    off.bind("x", request({ agent: agentSchema.parse({ id: "a", name: "A", permissions: { questions: false } }) }), context());
+    expect(() => off.ask("x", "?", [])).toThrow(/abgeschaltet/);
   });
 });
 

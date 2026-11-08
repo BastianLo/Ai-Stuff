@@ -41,7 +41,7 @@ export class WorkerHooks {
 
   async compactionContext(sessionId: string): Promise<string | undefined> {
     const info = await this.api.info(sessionId);
-    if (!info) return undefined;
+    if (!info || info.subSession) return undefined;
     const docs = info.documents.map((d) => `- ${d.name} (${d.access}): ${d.path}`).join("\n");
     return `AiFlow-Schritt „${info.label}“. Arbeitsverzeichnis: ${info.workspace.path}${info.workspace.readOnly ? " (nur lesen)" : ""}.${docs ? `\nDokumente:\n${docs}` : ""}\nNutze aiflow_context, um den Auftrag nachzuschlagen.`;
   }
@@ -62,9 +62,19 @@ export class WorkerHooks {
     return "Übergabe angenommen. Du bist fertig.";
   }
 
-  async delegate(sessionId: string, input: unknown): Promise<string> {
+  async delegate(sessionId: string, input: unknown, signal?: AbortSignal): Promise<string> {
     const tasks = typeof input === "object" && input !== null ? (input as { tasks?: unknown }).tasks : undefined;
-    return JSON.stringify(await this.api.delegate(sessionId, tasks), null, 2);
+    return JSON.stringify(await this.api.delegate(sessionId, tasks, signal), null, 2);
+  }
+
+  /** Tool `aiflow_ask`: Frage geht in die Inbox des Runs, die Antwort zurück an das Modell. */
+  async ask(sessionId: string, input: unknown, signal?: AbortSignal): Promise<string> {
+    const i = typeof input === "object" && input !== null ? (input as { question?: unknown; options?: unknown }) : {};
+    const question = typeof i.question === "string" ? i.question.trim() : "";
+    if (!question) throw new Error("question fehlt.");
+    const options = Array.isArray(i.options) ? i.options.filter((o): o is string => typeof o === "string" && o.trim() !== "") : [];
+    const answer = await this.api.ask(sessionId, question, options, signal);
+    return `Antwort des Nutzers: ${answer}`;
   }
 
   async progress(sessionId: string, input: unknown): Promise<string> {

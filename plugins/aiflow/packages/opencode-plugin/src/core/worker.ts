@@ -15,7 +15,11 @@ export interface WorkerSessionInfo {
   permissions: PermissionRule[];
   phase: "work" | "finalize";
   handoffReceived: boolean;
+  questions: boolean;
+  subSession: boolean;
 }
+
+type JobView = { state: "running" } | { state: "done"; result: unknown } | { state: "failed"; error: { code: string; message: string } };
 
 /** Zugriff auf die Worker-API des Daemons (nur Worker-Rolle). */
 export class WorkerApi {
@@ -24,7 +28,24 @@ export class WorkerApi {
   constructor(
     private readonly env: WorkerEnv,
     private readonly fetchImpl: typeof fetch = (i, init) => fetch(i, init),
+    private readonly pollMs = 1000,
   ) {}
+
+  /** Startet einen lang laufenden Auftrag im Daemon und wartet per Abfrage auf das Ergebnis (keine HTTP-Timeouts). */
+  private async job(path: string, body: unknown, signal?: AbortSignal): Promise<unknown> {
+    const started = await this.call<{ job?: string; error?: { message: string } }>("POST", path, body);
+    if (started.status !== 200 || !started.data.job) throw new Error(started.data.error?.message ?? `AiFlow-Daemon antwortet mit ${started.status}`);
+    const id = started.data.job;
+    for (;;) {
+      if (signal?.aborted) throw new Error("abgebrochen");
+      const res = await this.call<JobView & { error?: { message: string } }>("GET", `/jobs/${encodeURIComponent(id)}`);
+      if (res.status !== 200) throw new Error(res.data.error?.message ?? `AiFlow-Daemon antwortet mit ${res.status}`);
+      const view = res.data;
+      if (view.state === "done") return view.result;
+      if (view.state === "failed") throw new Error(view.error.message);
+      await new Promise((r) => setTimeout(r, this.pollMs));
+    }
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- T ist der erwartete Antworttyp
   private async call<T>(method: string, path: string, body?: unknown): Promise<{ status: number; data: T }> {
@@ -52,10 +73,14 @@ export class WorkerApi {
     return (await this.call<{ ok: boolean; error?: string }>("POST", `/sessions/${encodeURIComponent(sessionId)}/handoff`, { input })).data;
   }
 
-  async delegate(sessionId: string, tasks: unknown): Promise<unknown> {
-    const res = await this.call<unknown>("POST", `/sessions/${encodeURIComponent(sessionId)}/delegate`, { tasks });
-    if (res.status !== 200) throw new Error(JSON.stringify(res.data));
-    return res.data;
+  async delegate(sessionId: string, tasks: unknown, signal?: AbortSignal): Promise<unknown> {
+    return this.job(`/sessions/${encodeURIComponent(sessionId)}/delegate`, { tasks }, signal);
+  }
+
+  /** Rückfrage an den Nutzer; wartet, bis sie in der Inbox beantwortet ist. */
+  async ask(sessionId: string, question: string, options: string[], signal?: AbortSignal): Promise<string> {
+    const answer = await this.job(`/sessions/${encodeURIComponent(sessionId)}/ask`, { question, options }, signal);
+    return typeof answer === "string" ? answer : JSON.stringify(answer);
   }
 
   async progress(sessionId: string, message: string): Promise<void> {

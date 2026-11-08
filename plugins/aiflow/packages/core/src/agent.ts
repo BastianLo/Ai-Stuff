@@ -60,8 +60,17 @@ export const agentSchema = z.object({
     .object({ maxSteps: z.number().int().positive().optional(), timeout: durationSchema.default("30m"), retries: z.number().int().min(0).max(5).default(1) })
     .default({ timeout: "30m", retries: 1 }),
   permissions: z
-    .object({ preset: permissionPresetSchema.default("read-only"), rules: z.array(permissionRuleSchema).default([]), questions: z.boolean().default(false) })
-    .default({ preset: "read-only", rules: [], questions: false }),
+    .object({
+      preset: permissionPresetSchema.default("read-only"),
+      rules: z.array(permissionRuleSchema).default([]),
+      /** Rückfragen an den Nutzer (Tool `aiflow_ask` → Inbox), wie das `question`-Tool einer normalen Session. */
+      questions: z.boolean().default(true),
+      /** Antwort auf Rückfragen von opencode („ask“): an die Inbox wie in einer normalen Session, oder automatisch. */
+      onAsk: z.enum(["inbox", "allow", "deny"]).default("inbox"),
+      /** Native opencode-Sub-Agenten (Tool `task`/`subagent`); ihre Sessions erben die Regeln des Schritts. */
+      nativeSubagents: z.boolean().default(true),
+    })
+    .default({ preset: "read-only", rules: [], questions: true, onAsk: "inbox", nativeSubagents: true }),
   /** MCP-Server: `default` gilt für nicht aufgeführte Server; `allow`/`deny` überschreiben pro Server. */
   mcp: z
     .object({ default: z.enum(["allow", "deny"]).default("allow"), allow: z.array(z.string()).default([]), deny: z.array(z.string()).default([]) })

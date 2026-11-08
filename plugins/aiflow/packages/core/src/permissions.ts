@@ -42,11 +42,8 @@ const SHELL_READ_ALLOW = ["git diff*", "git log*", "git show*", "git status*"];
 const SHELL_DENY = ["git push*", "git reset --hard*", "git checkout*", "rm -rf /*", "sudo*"];
 
 export function presetRules(preset: PermissionPreset): PermissionRule[] {
-  const base: PermissionRule[] = [
-    ...READ_TOOLS.map((a) => rule(a, "*", "allow")),
-    rule("subagent", "*", "deny"),
-    rule("question", "*", "deny"),
-  ];
+  // Das native `question`-Tool bleibt aus: Rückfragen laufen versionsneutral über `aiflow_ask` in die Inbox.
+  const base: PermissionRule[] = [...READ_TOOLS.map((a) => rule(a, "*", "allow")), rule("question", "*", "deny")];
   switch (preset) {
     case "read-only":
       return [

@@ -8,6 +8,7 @@ import type { RunState } from "@aiflow/engine";
 import type { DefinitionKind, Scope } from "@aiflow/store";
 import { git } from "@aiflow/workspace-git";
 import type { Daemon, GlobalEvent } from "./daemon.js";
+import { WorkerJobs } from "./jobs.js";
 
 const KINDS = new Set<DefinitionKind>(["agents", "workflows", "snippets"]);
 const STATUS: Record<string, number> = { VALIDATION: 400, NOT_FOUND: 404, CONFLICT: 409, INVALID_STATE: 409, FORBIDDEN: 403, LIMIT: 422, TIMEOUT: 504 };
@@ -94,13 +95,30 @@ export function createApp(daemon: Daemon, options: AppOptions = {}): Hono {
     return c.json(daemon.bridge.info(sid));
   });
   worker.post("/sessions/:sid/handoff", async (c) => c.json(daemon.bridge.submitHandoff(c.req.param("sid"), (await c.req.json<{ input: unknown }>()).input)));
+  // Delegation und Rückfragen können lange dauern: Auftrag starten, Ergebnis über /jobs/:id abholen.
+  const jobs = new WorkerJobs();
   worker.post("/sessions/:sid/delegate", async (c) => {
-    const body = await c.req.json<{ tasks: { agent: string; task: string; expectedResult?: string }[] }>();
-    return c.json(await daemon.bridge.delegate(c.req.param("sid"), body.tasks ?? []));
+    const sid = c.req.param("sid");
+    const body = await c.req.json<{ tasks?: { agent: string; task: string; expectedResult?: string }[] }>();
+    if (!daemon.bridge.has(sid)) throw new AiflowError("NOT_FOUND", "Keine AiFlow-Session.");
+    return c.json({ job: jobs.start(() => daemon.bridge.delegate(sid, body.tasks ?? [])) });
+  });
+  worker.get("/jobs/:id", (c) => {
+    const job = jobs.take(c.req.param("id"));
+    return job ? c.json(job) : c.json({ error: { code: "NOT_FOUND", message: "Auftrag unbekannt (Daemon neu gestartet?)." } }, 404);
   });
   worker.post("/sessions/:sid/progress", async (c) => {
     daemon.bridge.progress(c.req.param("sid"), (await c.req.json<{ message: string }>()).message);
     return c.json({ ok: true });
+  });
+  worker.post("/sessions/:sid/ask", async (c) => {
+    const body = await c.req.json<{ question?: unknown; options?: unknown }>();
+    if (typeof body.question !== "string" || !body.question.trim()) return c.json({ error: { code: "VALIDATION", message: "question fehlt." } }, 400);
+    const options = Array.isArray(body.options) ? body.options.filter((o): o is string => typeof o === "string" && o.trim() !== "") : [];
+    const sid = c.req.param("sid");
+    const question = body.question;
+    if (!daemon.bridge.has(sid)) throw new AiflowError("NOT_FOUND", "Keine AiFlow-Session.");
+    return c.json({ job: jobs.start(() => daemon.bridge.ask(sid, question, options)) });
   });
   worker.post("/sessions/:sid/context", async (c) => c.json({ text: daemon.bridge.context(c.req.param("sid"), (await c.req.json<{ query?: string }>()).query ?? "") }));
   app.route("/api/worker", worker);

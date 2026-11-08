@@ -1,6 +1,6 @@
 import { AiflowError, splitModelRef } from "@aiflow/core";
 import type { RuntimeCapabilities, StepActivity } from "@aiflow/engine";
-import type { CreateSessionOptions, ModelInfo, OpencodeDriver, RunOptions, RunResult, SessionActivity } from "../common/driver.js";
+import type { CreateSessionOptions, ModelInfo, OpencodeDriver, RunOptions, RunResult, DriverEvent, PermissionReply } from "../common/driver.js";
 import { toV2Rules } from "../common/permissions.js";
 import { num, obj, str } from "../common/util.js";
 
@@ -20,6 +20,7 @@ export interface V2Client {
   model: { list(input?: Record<string, unknown>): Promise<unknown> };
   plugin: { list(input?: Record<string, unknown>): Promise<unknown> };
   mcp?: { list(input?: Record<string, unknown>): Promise<unknown> };
+  permission: { reply(input: { sessionID: string; requestID: string; decision: "once" | "always" | "reject"; message?: string }): Promise<unknown> };
 }
 
 /**
@@ -81,8 +82,12 @@ export class V2Driver implements OpencodeDriver {
     await this.client.session.interrupt({ sessionID: sessionId, resume: false });
   }
 
-  async *activity(signal: AbortSignal): AsyncIterable<SessionActivity> {
-    const types = ["session.text.ended", "session.tool.called", "session.tool.success", "session.tool.failed", "session.tool.progress"];
+  async replyPermission(o: { sessionId: string; requestId: string; reply: PermissionReply; message?: string }): Promise<void> {
+    await this.client.permission.reply({ sessionID: o.sessionId, requestID: o.requestId, decision: o.reply, ...(o.message ? { message: o.message } : {}) });
+  }
+
+  async *activity(signal: AbortSignal): AsyncIterable<DriverEvent> {
+    const types = ["session.text.ended", "session.tool.called", "session.tool.success", "session.tool.failed", "session.tool.progress", "session.created", "permission.asked"];
     for await (const raw of this.client.event.subscribe({ types }, { signal })) {
       const mapped = mapV2Event(raw);
       if (mapped) yield mapped;
@@ -125,12 +130,21 @@ function textOf(message: unknown): string {
 }
 
 /** v2-Events → Aktivität. */
-export function mapV2Event(raw: unknown): SessionActivity | undefined {
+export function mapV2Event(raw: unknown): DriverEvent | undefined {
   const event = obj(raw);
   const data = obj(event.data ?? event.properties);
   const sessionId = str(data.sessionID);
   if (!sessionId) return undefined;
   const type = str(event.type) ?? "";
+  if (type === "session.created") {
+    const parentId = str(data.parentID);
+    return parentId ? { type: "session.created", sessionId, parentId } : undefined;
+  }
+  if (type === "permission.asked") {
+    const requestId = str(data.id);
+    const resources = Array.isArray(data.resources) ? data.resources.filter((r): r is string => typeof r === "string") : [];
+    return requestId ? { type: "permission.asked", sessionId, requestId, action: str(data.action) ?? "unknown", resources } : undefined;
+  }
   if (type === "session.text.ended") {
     const text = str(data.text);
     return text ? { sessionId, activity: { kind: "text", text } } : undefined;

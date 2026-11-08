@@ -16,6 +16,13 @@ export interface SessionInfo {
   permissions: AgentStepRequest["permissions"];
   phase: "work" | "finalize";
   handoffReceived: boolean;
+  /** Rückfragen an den Nutzer über `aiflow_ask` erlaubt. */
+  questions: boolean;
+  /**
+   * Kind-Session eines nativen opencode-Sub-Agenten: gleiche Regeln wie der Schritt, aber ohne AiFlow-Prompt
+   * und ohne AiFlow-Tools (Übergabe und Delegation gehören dem Schritt selbst).
+   */
+  subSession: boolean;
 }
 
 export interface GuardDecision {
@@ -37,6 +44,8 @@ interface Binding {
  */
 export class WorkerBridge {
   private readonly bindings = new Map<string, Binding>();
+  /** Kind-Session → Session des AiFlow-Schritts (native Sub-Agenten, auch verschachtelt). */
+  private readonly children = new Map<string, string>();
 
   bind(sessionId: string, request: AgentStepRequest, context: AgentStepContext): void {
     this.bindings.set(sessionId, { request, context, handoffWaiters: [], phase: "work" });
@@ -44,10 +53,32 @@ export class WorkerBridge {
 
   unbind(sessionId: string): void {
     this.bindings.delete(sessionId);
+    for (const [child, root] of this.children) if (root === sessionId) this.children.delete(child);
+  }
+
+  /** Ordnet eine neue Session ihrem Schritt zu, wenn ihre Eltern-Session zu einem Schritt gehört. */
+  adoptChild(sessionId: string, parentId: string): boolean {
+    const root = this.root(parentId);
+    if (!root) return false;
+    this.children.set(sessionId, root);
+    return true;
+  }
+
+  /** Session des Schritts, zu dem `sessionId` gehört (sie selbst oder ihr Vorfahr). */
+  root(sessionId: string): string | undefined {
+    if (this.bindings.has(sessionId)) return sessionId;
+    return this.children.get(sessionId);
   }
 
   has(sessionId: string): boolean {
-    return this.bindings.has(sessionId);
+    return this.root(sessionId) !== undefined;
+  }
+
+  /** Anfrage und Kontext des Schritts, zu dem die Session (auch als Kind-Session) gehört. */
+  step(sessionId: string): { rootId: string; request: AgentStepRequest; context: AgentStepContext } | undefined {
+    const rootId = this.root(sessionId);
+    const b = rootId ? this.bindings.get(rootId) : undefined;
+    return rootId && b ? { rootId, request: b.request, context: b.context } : undefined;
   }
 
   private binding(sessionId: string): Binding {
@@ -62,7 +93,8 @@ export class WorkerBridge {
   }
 
   info(sessionId: string): SessionInfo {
-    const b = this.binding(sessionId);
+    const rootId = this.root(sessionId);
+    const b = this.binding(rootId ?? sessionId);
     const { request } = b;
     return {
       runId: request.runId,
@@ -79,7 +111,17 @@ export class WorkerBridge {
       permissions: request.permissions,
       phase: b.phase,
       handoffReceived: b.handoff !== undefined,
+      questions: request.agent.permissions.questions,
+      subSession: rootId !== sessionId,
     };
+  }
+
+  /** Rückfrage an den Nutzer (Tool `aiflow_ask`) → Inbox des Runs; liefert die Antwort. */
+  ask(sessionId: string, question: string, options: string[]): Promise<string> {
+    const step = this.step(sessionId);
+    if (!step) throw new AiflowError("NOT_FOUND", `Session ${sessionId} gehört zu keinem laufenden AiFlow-Schritt.`);
+    if (!step.request.agent.permissions.questions) throw new AiflowError("FORBIDDEN", "Rückfragen sind für diesen Agenten abgeschaltet. Entscheide selbst und begründe es in der Übergabe.");
+    return step.context.ask({ question, options });
   }
 
   /** Nimmt eine Übergabe an (v2: Tool `aiflow_handoff`). Ungültige Eingaben liefern Fehler für das Modell. */
@@ -110,7 +152,7 @@ export class WorkerBridge {
   }
 
   progress(sessionId: string, message: string): void {
-    this.binding(sessionId).context.activity({ kind: "progress", message });
+    this.binding(this.root(sessionId) ?? sessionId).context.activity({ kind: "progress", message });
   }
 
   /** Kontext zum Nachschlagen (Tool `aiflow_context`). */
@@ -124,7 +166,8 @@ export class WorkerBridge {
 
   /** Prüft einen Tool-Aufruf gegen die Session-Regeln (harte Durchsetzung im Plugin). */
   guard(sessionId: string, action: string, resource: string): GuardDecision {
-    const b = this.bindings.get(sessionId);
+    const rootId = this.root(sessionId);
+    const b = rootId ? this.bindings.get(rootId) : undefined;
     if (!b) return { allow: true };
     const effect = evaluatePermission(b.request.permissions, action, resource, "allow");
     if (effect === "deny") return { allow: false, message: `AiFlow: „${action}“ auf „${resource}“ ist in diesem Schritt nicht erlaubt.` };

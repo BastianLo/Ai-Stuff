@@ -19,7 +19,7 @@ function Item({ item }: { item: InboxItem }) {
     <Card>
       <div className="space-y-3 p-4">
         <div className="flex items-center gap-2">
-          <Badge color={item.kind === "review" ? "violet" : item.kind === "human" ? "amber" : "sky"}>{item.kind === "review" ? "Review" : item.kind === "human" ? "Freigabe" : "Rückfrage"}</Badge>
+          <Badge color={KIND_BADGE[item.kind].color}>{KIND_BADGE[item.kind].label}</Badge>
           <span className="text-sm font-semibold">{item.title}</span>
           <span className="ml-auto text-xs text-slate-500">{relative(item.createdAt)}</span>
         </div>
@@ -61,3 +61,10 @@ export function InboxPage() {
     </div>
   );
 }
+
+const KIND_BADGE: Record<InboxItem["kind"], { label: string; color: "violet" | "amber" | "sky" | "red" }> = {
+  review: { label: "Review", color: "violet" },
+  human: { label: "Freigabe", color: "amber" },
+  question: { label: "Rückfrage", color: "sky" },
+  permission: { label: "Erlaubnis", color: "red" },
+};

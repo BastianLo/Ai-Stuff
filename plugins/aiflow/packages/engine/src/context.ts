@@ -128,6 +128,9 @@ export function buildSystemPrompt(agent: AgentDefinition, snippets: ReadonlyMap<
       ].join("\n"),
     );
   }
+  if (agent.permissions.questions) {
+    parts.push("### Rückfragen\nBrauchst du eine Entscheidung des Nutzers, die du nicht selbst treffen kannst, frage mit dem Tool `aiflow_ask` (Frage und Antwortoptionen). Der Nutzer antwortet über AiFlow; frage sparsam.");
+  }
   return parts.join("\n\n");
 }
 

@@ -1,7 +1,7 @@
 import type { Plugin } from "@opencode/plugin";
 import { resolveOptions, workerEnv } from "../core/config.js";
 import { BridgeService } from "../core/bridge.js";
-import { CONTEXT_TOOL, DELEGATE_TOOL, delegateSchema, HANDOFF_TOOL, PROGRESS_TOOL, WORKER_TOOL_NAMES, LIST_WORKFLOWS_TOOL, RUN_TOOL } from "../core/tools.js";
+import { ASK_TOOL, CONTEXT_TOOL, DELEGATE_TOOL, delegateSchema, HANDOFF_TOOL, PROGRESS_TOOL, visibleWorkerTools, WORKER_TOOL_NAMES, LIST_WORKFLOWS_TOOL, RUN_TOOL } from "../core/tools.js";
 import { WorkerApi } from "../core/worker.js";
 import { WorkerHooks } from "../core/worker-hooks.js";
 
@@ -22,6 +22,7 @@ async function setupWorker(ctx: Context, hooks: WorkerHooks): Promise<() => void
     editor.add({ name: DELEGATE_TOOL.name, description: DELEGATE_TOOL.description, input: DELEGATE_TOOL.input, execute: async (input, c) => text(await hooks.delegate(c.sessionID, input)) });
     editor.add({ name: PROGRESS_TOOL.name, description: PROGRESS_TOOL.description, input: PROGRESS_TOOL.input, execute: async (input, c) => text(await hooks.progress(c.sessionID, input)) });
     editor.add({ name: CONTEXT_TOOL.name, description: CONTEXT_TOOL.description, input: CONTEXT_TOOL.input, execute: async (input, c) => text(await hooks.context(c.sessionID, input)) });
+    editor.add({ name: ASK_TOOL.name, description: ASK_TOOL.description, input: ASK_TOOL.input, execute: async (input, c) => text(await hooks.ask(c.sessionID, input)) });
   });
   await ctx.tool.hook("execute.before", async (event) => {
     await hooks.guard(event.sessionID, event.tool, event.input);
@@ -35,16 +36,15 @@ async function setupWorker(ctx: Context, hooks: WorkerHooks): Promise<() => void
   });
   await ctx.session.hook("context", async (event) => {
     const info = await hooks.info(event.sessionID);
-    if (!info) {
-      for (const name of WORKER_TOOL_NAMES) Reflect.deleteProperty(event.tools, name);
-      return;
-    }
+    const visible = visibleWorkerTools(info);
+    for (const name of WORKER_TOOL_NAMES) if (!visible.has(name)) Reflect.deleteProperty(event.tools, name);
+    // Kind-Sessions nativer Sub-Agenten behalten ihren eigenen Prompt; es gelten nur die Regeln des Schritts.
+    if (!info || info.subSession) return;
     event.system.unshift({ type: "text", text: info.systemPrompt });
     const handoff = event.tools[HANDOFF_TOOL.name];
     if (handoff) handoff.input = info.handoffSchema;
     const delegate = event.tools[DELEGATE_TOOL.name];
-    if (!info.delegation) Reflect.deleteProperty(event.tools, DELEGATE_TOOL.name);
-    else if (delegate) delegate.input = delegateSchema(info.delegation.allowed.map((a) => a.id));
+    if (delegate && info.delegation) delegate.input = delegateSchema(info.delegation.allowed.map((a) => a.id));
     if (info.temperature !== undefined) event.options.temperature = info.temperature;
     if (info.topP !== undefined) event.options.topP = info.topP;
   });

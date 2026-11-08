@@ -33,6 +33,26 @@ export interface SessionActivity {
   activity: StepActivity;
 }
 
+/** Eine Session wurde angelegt (u. a. Kind-Sessions nativer Sub-Agenten). */
+export interface SessionCreated {
+  type: "session.created";
+  sessionId: string;
+  parentId: string;
+}
+
+/** opencode fragt nach einer Erlaubnis („ask“); ohne Antwort wartet die Session. */
+export interface PermissionAsked {
+  type: "permission.asked";
+  sessionId: string;
+  requestId: string;
+  action: string;
+  resources: string[];
+}
+
+export type DriverEvent = SessionActivity | SessionCreated | PermissionAsked;
+
+export type PermissionReply = "once" | "reject";
+
 export interface ModelInfo {
   providerID: string;
   modelID: string;
@@ -49,8 +69,10 @@ export interface OpencodeDriver {
   /** Sendet einen Prompt und wartet, bis die Session wieder untätig ist. */
   run(sessionId: string, options: RunOptions, signal: AbortSignal): Promise<RunResult>;
   abort(sessionId: string, directory: string): Promise<void>;
-  /** Live-Aktivität aller Sessions (wird pro Session gefiltert). */
-  activity(signal: AbortSignal): AsyncIterable<SessionActivity>;
+  /** Live-Ereignisse aller Sessions: Aktivität, neue (Kind-)Sessions, Rückfragen. */
+  activity(signal: AbortSignal): AsyncIterable<DriverEvent>;
+  /** Beantwortet eine Rückfrage („ask“). Bei `reject` erhält das Modell `message` als Begründung. */
+  replyPermission(o: { sessionId: string; requestId: string; reply: PermissionReply; message?: string; directory: string }): Promise<void>;
   listModels(): Promise<ModelInfo[]>;
   /** MCP-Server; mit `directory` inklusive der projektlokalen Konfiguration dieses Verzeichnisses. */
   listMcp(directory?: string): Promise<{ name: string; status: string }[]>;

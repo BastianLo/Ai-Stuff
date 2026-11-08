@@ -50,3 +50,20 @@ describe("Pfade und Einstellungen", () => {
     expect(expandPath("daten")).toBe(join(process.cwd(), "daten"));
   });
 });
+
+describe("Aufträge der Worker-API", () => {
+  it("liefert Ergebnis oder Fehler genau einmal", async () => {
+    const { WorkerJobs } = await import("../src/jobs.js");
+    const { AiflowError } = await import("@aiflow/core");
+    const jobs = new WorkerJobs();
+    let release: (v: string) => void = () => undefined;
+    const ok = jobs.start(() => new Promise<string>((r) => (release = r)));
+    const bad = jobs.start(() => Promise.reject(new AiflowError("FORBIDDEN", "nein")));
+    expect(jobs.take(ok)).toEqual({ state: "running" });
+    release("B");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(jobs.take(ok)).toEqual({ state: "done", result: "B" });
+    expect(jobs.take(ok)).toBeUndefined();
+    expect(jobs.take(bad)).toEqual({ state: "failed", error: { code: "FORBIDDEN", message: "nein" } });
+  });
+});

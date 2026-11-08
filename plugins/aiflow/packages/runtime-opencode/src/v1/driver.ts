@@ -1,6 +1,6 @@
 import { AiflowError, splitModelRef, type PermissionRule } from "@aiflow/core";
 import type { RuntimeCapabilities, StepActivity } from "@aiflow/engine";
-import type { CreateSessionOptions, ModelInfo, OpencodeDriver, RunOptions, RunResult, SessionActivity } from "../common/driver.js";
+import type { CreateSessionOptions, ModelInfo, OpencodeDriver, RunOptions, RunResult, DriverEvent, PermissionReply } from "../common/driver.js";
 import { toV1Rules } from "../common/permissions.js";
 import { num, obj, str } from "../common/util.js";
 
@@ -16,6 +16,7 @@ export interface V1Client {
   event: { subscribe(p?: Record<string, unknown>, o?: { signal?: AbortSignal }): Promise<{ stream: AsyncIterable<unknown> }> };
   provider: { list(): Promise<{ data?: unknown }> };
   mcp: { status(p?: Record<string, unknown>): Promise<{ data?: unknown }> };
+  permission: { reply(p: Record<string, unknown>): Promise<{ data?: unknown; error?: unknown }> };
   config: { get(): Promise<{ data?: unknown }> };
 }
 
@@ -99,7 +100,11 @@ export class V1Driver implements OpencodeDriver {
     await this.client.session.abort({ sessionID: sessionId, directory });
   }
 
-  async *activity(signal: AbortSignal): AsyncIterable<SessionActivity> {
+  async replyPermission(o: { sessionId: string; requestId: string; reply: PermissionReply; message?: string; directory: string }): Promise<void> {
+    unwrap(await this.client.permission.reply({ requestID: o.requestId, reply: o.reply, directory: o.directory, ...(o.message ? { message: o.message } : {}) }), "permission.reply");
+  }
+
+  async *activity(signal: AbortSignal): AsyncIterable<DriverEvent> {
     const { stream } = await this.client.event.subscribe({}, { signal });
     for await (const raw of stream) {
       const mapped = mapV1Event(raw);
@@ -128,9 +133,21 @@ export class V1Driver implements OpencodeDriver {
 }
 
 /** v1-Events → Aktivität (Text-Parts nur abgeschlossen, Tool-Parts mit Status). */
-export function mapV1Event(raw: unknown): SessionActivity | undefined {
+export function mapV1Event(raw: unknown): DriverEvent | undefined {
   const event = obj(raw);
   const props = obj(event.properties);
+  if (event.type === "session.created") {
+    const info = obj(props.info);
+    const sessionId = str(info.id) ?? str(props.sessionID);
+    const parentId = str(info.parentID);
+    return sessionId && parentId ? { type: "session.created", sessionId, parentId } : undefined;
+  }
+  if (event.type === "permission.asked") {
+    const sessionId = str(props.sessionID);
+    const requestId = str(props.id);
+    const patterns = Array.isArray(props.patterns) ? props.patterns.filter((p): p is string => typeof p === "string") : [];
+    return sessionId && requestId ? { type: "permission.asked", sessionId, requestId, action: str(props.permission) ?? "unknown", resources: patterns } : undefined;
+  }
   if (event.type !== "message.part.updated") return undefined;
   const part = obj(props.part);
   const sessionId = str(part.sessionID);

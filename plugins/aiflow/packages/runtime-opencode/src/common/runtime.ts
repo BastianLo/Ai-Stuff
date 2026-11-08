@@ -1,14 +1,19 @@
-import { AiflowError } from "@aiflow/core";
-import type { AgentRuntime, AgentStepContext, AgentStepRequest, AgentStepResult, RuntimeCapabilities } from "@aiflow/engine";
+import { AiflowError, assertNever } from "@aiflow/core";
+import type { AgentRuntime, AgentStepContext, AgentStepRequest, AgentStepResult, RuntimeCapabilities, StepActivity } from "@aiflow/engine";
 import type { WorkerBridge } from "./bridge.js";
-import type { OpencodeDriver, SessionActivity } from "./driver.js";
+import type { DriverEvent, OpencodeDriver, PermissionAsked, PermissionReply } from "./driver.js";
 import { extractJson, finalizePrompt } from "./handoff.js";
 import { expandMcpRules } from "./permissions.js";
+
+/** Antwortoptionen, wenn eine Rückfrage von opencode in der Inbox landet. */
+export const PERMISSION_OPTIONS = { once: "Einmal erlauben", step: "Für diesen Schritt erlauben", reject: "Ablehnen" } as const;
 
 /** AgentRuntime über einen opencode-Worker (v1 oder v2, je nach Treiber). */
 export class OpencodeRuntime implements AgentRuntime {
   readonly id: string;
-  private readonly listeners = new Map<string, (a: SessionActivity) => void>();
+  private readonly listeners = new Map<string, (a: StepActivity) => void>();
+  /** Pro Schritt-Session: Aktionen, die der Nutzer „für diesen Schritt“ erlaubt hat. */
+  private readonly approved = new Map<string, Set<string>>();
   private readonly stop = new AbortController();
 
   constructor(
@@ -29,10 +34,72 @@ export class OpencodeRuntime implements AgentRuntime {
 
   private async pumpActivity(): Promise<void> {
     try {
-      for await (const event of this.driver.activity(this.stop.signal)) this.listeners.get(event.sessionId)?.(event);
+      for await (const event of this.driver.activity(this.stop.signal)) this.handle(event);
     } catch {
       /* Stream beendet; der Worker-Supervisor startet neu */
     }
+  }
+
+  /** Verteilt ein Ereignis des Workers. Kind-Sessions nativer Sub-Agenten zählen zum Schritt ihrer Eltern-Session. */
+  handle(event: DriverEvent): void {
+    if ("activity" in event) {
+      const root = this.bridge.root(event.sessionId);
+      if (root) this.listeners.get(root)?.(event.activity);
+      return;
+    }
+    switch (event.type) {
+      case "session.created":
+        this.bridge.adoptChild(event.sessionId, event.parentId);
+        return;
+      case "permission.asked":
+        void this.answerPermission(event);
+        return;
+      default:
+        assertNever(event, "Worker-Ereignis");
+    }
+  }
+
+  /**
+   * Beantwortet eine Rückfrage von opencode („ask“) nach `permissions.onAsk` des Agenten. Ohne Antwort würde die
+   * Session stehen bleiben; in einer normalen Session beantwortet der Nutzer sie im TUI, hier über die Inbox.
+   */
+  private async answerPermission(event: PermissionAsked): Promise<void> {
+    const step = this.bridge.step(event.sessionId);
+    if (!step) return; // keine AiFlow-Session
+    const { request, context, rootId } = step;
+    const what = event.resources.length > 0 && !(event.resources.length === 1 && event.resources[0] === "*") ? `„${event.action}“ auf ${event.resources.join(", ")}` : `„${event.action}“`;
+    const decide = async (): Promise<{ reply: PermissionReply; message?: string }> => {
+      if (this.approved.get(rootId)?.has(event.action)) return { reply: "once" };
+      const policy = request.agent.permissions.onAsk;
+      switch (policy) {
+        case "allow":
+          return { reply: "once" };
+        case "deny":
+          return { reply: "reject", message: `AiFlow: ${what} ist für diesen Agenten nicht freigegeben. Arbeite ohne diese Aktion weiter.` };
+        case "inbox": {
+          const answer = await context.ask({
+            kind: "permission",
+            question: `${request.label} möchte ${what} ausführen. opencode fragt nach einer Erlaubnis.`,
+            options: [PERMISSION_OPTIONS.once, PERMISSION_OPTIONS.step, PERMISSION_OPTIONS.reject],
+          });
+          if (answer === PERMISSION_OPTIONS.once) return { reply: "once" };
+          if (answer === PERMISSION_OPTIONS.step) {
+            const set = this.approved.get(rootId) ?? new Set<string>();
+            set.add(event.action);
+            this.approved.set(rootId, set);
+            return { reply: "once" };
+          }
+          // „Ablehnen“ oder Freitext: Freitext geht als Korrektur an das Modell
+          return { reply: "reject", message: answer === PERMISSION_OPTIONS.reject ? `AiFlow: Der Nutzer hat ${what} abgelehnt.` : `AiFlow: Der Nutzer hat ${what} abgelehnt: ${answer}` };
+        }
+        default:
+          return assertNever(policy, "onAsk");
+      }
+    };
+    const decision = await decide().catch(() => ({ reply: "reject" as const, message: "AiFlow: Der Schritt wurde beendet." }));
+    await this.driver
+      .replyPermission({ sessionId: event.sessionId, requestId: event.requestId, reply: decision.reply, directory: request.workspace.path, ...(decision.message ? { message: decision.message } : {}) })
+      .catch(() => undefined);
   }
 
   /** Bekannte MCP-Server (global + Projekt-Konfiguration des Verzeichnisses); bei Fehlern leer. */
@@ -57,7 +124,7 @@ export class OpencodeRuntime implements AgentRuntime {
             ...(request.model ? { model: request.model } : {}),
           });
     this.bridge.bind(sessionId, request, context);
-    this.listeners.set(sessionId, (e) => context.activity(e.activity));
+    this.listeners.set(sessionId, (a) => context.activity(a));
     const onAbort = (): void => void this.driver.abort(sessionId, directory).catch(() => undefined);
     context.signal.addEventListener("abort", onAbort, { once: true });
     try {
@@ -78,6 +145,7 @@ export class OpencodeRuntime implements AgentRuntime {
     } finally {
       context.signal.removeEventListener("abort", onAbort);
       this.listeners.delete(sessionId);
+      this.approved.delete(sessionId);
       this.bridge.unbind(sessionId);
     }
   }

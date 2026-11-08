@@ -194,7 +194,25 @@ export function AgentEditor() {
                     className="w-56"
                   />
                 </Field>
-                <Toggle checked={agent.permissions.questions} onChange={(v) => update({ permissions: { ...agent.permissions, questions: v } })} label="Rückfragen an den Nutzer erlaubt" />
+                <Field label="Wenn opencode um Erlaubnis fragt">
+                  <Select
+                    value={agent.permissions.onAsk}
+                    onChange={(e) => update({ permissions: { ...agent.permissions, onAsk: e.target.value as AgentDefinition["permissions"]["onAsk"] } })}
+                    options={[
+                      { value: "inbox", label: "Mich fragen (Inbox, Standard)" },
+                      { value: "allow", label: "Automatisch erlauben" },
+                      { value: "deny", label: "Automatisch ablehnen" },
+                    ]}
+                    className="w-64"
+                  />
+                </Field>
+              </div>
+              <div className="flex flex-wrap gap-x-6 gap-y-2">
+                <Toggle checked={agent.permissions.questions} onChange={(v) => update({ permissions: { ...agent.permissions, questions: v } })} label="Rückfragen an mich (aiflow_ask)" />
+                <Toggle checked={agent.permissions.nativeSubagents} onChange={(v) => update({ permissions: { ...agent.permissions, nativeSubagents: v } })} label="Native opencode-Sub-Agenten (task)" />
+              </div>
+              <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+                Was hier nicht geregelt ist, verhält sich wie in einer normalen opencode-Session: Tools aus Plugins (z. B. Skill- oder Wissenssuche), Skills und MCP-Server stehen zur Verfügung. Native Sub-Agenten erben die Regeln dieses Schritts. Nur das Original-Projekt ist tabu – Änderungen laufen über den Worktree und das Review.
               </div>
               <div className="text-xs text-slate-500">
                 Regeln werden in Reihenfolge ausgewertet, die letzte passende Regel gewinnt. Preset-Regeln: {presetRules(agent.permissions.preset).length}. Zusätzliche Regeln:

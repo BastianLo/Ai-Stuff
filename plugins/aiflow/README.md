@@ -38,7 +38,20 @@ Startet das opencode-Plugin den Daemon automatisch, gibt es dieselben Werte als 
 
 `opencodeConfig` wird dem Agent-Worker als `OPENCODE_CONFIG` übergeben (opencode v1 und v2). opencode lädt die Datei **zusätzlich** zur globalen Konfiguration und vor der `opencode.json` des Projekts. Das AiFlow-Plugin muss in einer dieser Dateien eingetragen sein, damit die Worker-Rolle aktiv ist. `aiflow setup opencode` schreibt den Eintrag in die konfigurierte Datei.
 
-## Agenten-Sessions und MCP
+## Agenten-Sessions: so mächtig wie eine normale Session
+
+Jeder Agent-Schritt ist eine normale opencode-Session im Worker. Der Worker lädt dieselbe Konfiguration wie dein opencode: Provider, Plugins, MCP-Server und Skills. Alles, was AiFlow nicht ausdrücklich regelt, verhält sich wie in einer normalen Session:
+
+- **Plugin-Tools** (z. B. Skill- oder Wissenssuche wie `skill_search`, `skill_list`), Skills und MCP-Server stehen ohne weitere Einstellung zur Verfügung.
+- **Rückfragen von opencode** („ask“, z. B. Zugriff außerhalb des Worktrees, `.env`-Dateien, eigene `ask`-Regeln in deiner Config) beantwortest du in der Inbox: einmal erlauben, für den ganzen Schritt erlauben oder ablehnen. Eine Freitext-Antwort geht als Korrektur an das Modell. Pro Agent auch automatisch („erlauben“ oder „ablehnen“), etwa für unbeaufsichtigte Läufe.
+- **Fragen des Agenten an dich** laufen über das Tool `aiflow_ask` in die Inbox und in die TUI-Übersicht. Pro Agent abschaltbar.
+- **Native opencode-Sub-Agenten** (Tool `task`) sind erlaubt. Ihre Kind-Sessions erben die Regeln des Schritts, auch in opencode v2, wo opencode das selbst nicht tut. Bei erzwungener AiFlow-Delegation sind sie gesperrt.
+
+Bewusst anders als in einer normalen Session: Das Original-Projekt ist für Agenten tabu. Änderungen entstehen im Worktree des Runs und kommen erst über das Review ins Projekt. Dazu kommen die Rechte, die du pro Agent oder Knoten vergibst (Preset, Regeln, Dokumentzugriffe, Nur-lesen).
+
+Delegation und Rückfragen laufen zwischen Plugin und Daemon als Auftrag mit Abfrage. Ein Sub-Agent oder eine Antwort darf also beliebig lange dauern, ohne dass ein HTTP-Timeout greift.
+
+## Sessions und MCP im Detail
 
 Jeder Agent-Schritt ist eine normale opencode-Session im Worker. Sie wird im gewöhnlichen opencode-Speicher abgelegt, mit dem Titel `AiFlow · <Knoten>`, den Metadaten `aiflowRunId`/`aiflowStepId` und dem Run-Worktree als Verzeichnis. Werkzeuge, die opencode-Sessions auswerten, sehen diese Sessions also auch.
 
@@ -54,7 +67,7 @@ Die Regeln werden auf die Tool-Namen `<server>_*` abgebildet (gleiches Schema in
 
 | Befehl | Zweck |
 | --- | --- |
-| `pnpm check` | Typecheck, Lint, Paketgrenzen, 109 Unit-/Integrationstests |
+| `pnpm check` | Typecheck, Lint, Paketgrenzen, 120 Unit-/Integrationstests |
 | `pnpm test:e2e` | 7 Playwright-Tests gegen Daemon mit Simulations-Runtime |
 | `node scripts/screenshots.mjs` | Screenshots neu erzeugen (nach `pnpm build`) |
 
