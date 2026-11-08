@@ -1,0 +1,28 @@
+name: FiGr
+
+on:
+  push:
+    paths: ["plugins/figr/**", ".github/workflows/figr.yml"]
+  pull_request:
+    paths: ["plugins/figr/**", ".github/workflows/figr.yml"]
+
+defaults:
+  run:
+    working-directory: plugins/figr
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: plugins/figr/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: git config --global user.email ci@example.com && git config --global user.name CI
+      - run: pnpm check

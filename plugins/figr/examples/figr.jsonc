@@ -1,0 +1,71 @@
+// FiGr – Beispielkonfiguration. Kopieren nach .opencode/figr.jsonc
+// Agenten dazu: examples/agent/*.md nach .opencode/agent/ kopieren.
+{
+  "$schema": "../figr.schema.json",
+  "version": 1,
+  "defaultProfile": "strict",
+  "orchestrators": ["orchestrator"],
+  "workDir": ".opencode/figr",
+
+  "profiles": {
+    // Volle Leitplanken: Recherche → Multi-Plan mit Review → Best-of-3 → Review mit Checks → fertig
+    "strict": {
+      "gates": {
+        "research": {
+          "description": "Codebasis verstehen, bevor geplant wird",
+          "evidence": { "subagents": { "agents": ["explore"], "min": 2 } }
+        },
+        "plan": {
+          "requires": ["research"],
+          "artifact": { "type": "file", "path": "plan.md" },
+          "produce": { "pattern": "multi-plan", "planners": ["planner-a", "planner-b", "planner-c"], "synthesizer": "plan-synthesizer" },
+          "agents": ["planner"],
+          "approve": {
+            "reviewers": ["architect-reviewer", "security-reviewer"],
+            "quorum": "all",
+            "veto": true,
+            "maxRounds": 3
+          }
+        },
+        "implementation": {
+          "requires": ["plan"],
+          "artifact": { "type": "diff" },
+          "produce": { "pattern": "best-of-n", "agent": "implementer", "n": 3, "judge": "code-judge", "checks": ["npm test"] },
+          "agents": ["implementer"],
+          "approve": {
+            "reviewers": ["standards-reviewer", "test-reviewer", "security-reviewer"],
+            "quorum": "all",
+            "checks": ["npm run lint", "npm test"],
+            "maxRounds": 4
+          }
+        },
+        "done": { "requires": ["implementation"], "final": true }
+      },
+      "rules": {
+        "orchestrator": { "mayEdit": false, "shell": { "allow": ["git status*", "git diff*", "git log*", "ls*"] } },
+        "subagents": { "maxParallel": 4, "maxTotal": 60, "independentReviews": true },
+        "stopGuard": { "enabled": true, "maxNudges": 3 },
+        "stagnation": { "enabled": true }
+      }
+    },
+
+    // Schneller: 1 Planer, 1 Reviewer pro Gate, kein Best-of-N
+    "quick": {
+      "extends": "strict",
+      "gates": {
+        "research": { "evidence": { "subagents": { "min": 1 } } },
+        "plan": { "produce": { "pattern": "single", "agent": "planner" }, "approve": { "reviewers": ["architect-reviewer"], "quorum": 1 } },
+        "implementation": {
+          "produce": { "pattern": "single", "agent": "implementer" },
+          "approve": { "reviewers": ["standards-reviewer"], "quorum": 1, "checks": ["npm test"] }
+        }
+      }
+    },
+
+    // Sanfter Einstieg: keine Gates, nur „Orchestrator ändert nicht“ und der Stop-Guard
+    "solo": {
+      "gates": {},
+      "rules": { "orchestrator": { "mayEdit": false }, "stopGuard": { "enabled": true, "maxNudges": 1 } }
+    }
+  }
+}

@@ -1,0 +1,451 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "default": 1,
+      "type": "number",
+      "const": 1
+    },
+    "defaultProfile": {
+      "type": "string"
+    },
+    "orchestrators": {
+      "default": [
+        "orchestrator"
+      ],
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "workDir": {
+      "default": ".opencode/figr",
+      "type": "string",
+      "minLength": 1
+    },
+    "profiles": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "gates": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]*$"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "description": {
+                  "type": "string"
+                },
+                "requires": {
+                  "default": [],
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "artifact": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "file"
+                        },
+                        "path": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "root": {
+                          "default": "session",
+                          "type": "string",
+                          "enum": [
+                            "session",
+                            "project"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "diff"
+                        },
+                        "ignore": {
+                          "default": [],
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "text"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "produce": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "pattern": {
+                          "type": "string",
+                          "const": "multi-plan"
+                        },
+                        "planners": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "synthesizer": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "askOnConflict": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "enforce": {
+                          "default": false,
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "pattern": {
+                          "type": "string",
+                          "const": "single"
+                        },
+                        "agent": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "enforce": {
+                          "default": false,
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "pattern": {
+                          "type": "string",
+                          "const": "best-of-n"
+                        },
+                        "agent": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "n": {
+                          "default": 3,
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 8
+                        },
+                        "judge": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "checks": {
+                          "default": [],
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "checksParallel": {
+                          "default": true,
+                          "type": "boolean"
+                        },
+                        "enforce": {
+                          "default": false,
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "agents": {
+                  "default": [],
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "approve": {
+                  "type": "object",
+                  "properties": {
+                    "reviewers": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "quorum": {
+                      "default": "all",
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "all"
+                        },
+                        {
+                          "type": "string",
+                          "const": "majority"
+                        },
+                        {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        }
+                      ]
+                    },
+                    "veto": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "maxRounds": {
+                      "default": 3,
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "human": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "invalidateOnChange": {
+                      "default": true,
+                      "type": "boolean"
+                    },
+                    "checks": {
+                      "default": [],
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "rubric": {
+                      "type": "string"
+                    },
+                    "checkTimeout": {
+                      "default": 600,
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "evidence": {
+                  "type": "object",
+                  "properties": {
+                    "subagents": {
+                      "type": "object",
+                      "properties": {
+                        "agents": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "min": {
+                          "default": 1,
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "file": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "root": {
+                          "default": "project",
+                          "type": "string",
+                          "enum": [
+                            "session",
+                            "project"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "check": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "final": {
+                  "default": false,
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "rules": {
+            "default": {},
+            "type": "object",
+            "properties": {
+              "orchestrator": {
+                "default": {},
+                "type": "object",
+                "properties": {
+                  "mayEdit": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "shell": {
+                    "default": {},
+                    "type": "object",
+                    "properties": {
+                      "allow": {
+                        "default": [
+                          "git status*",
+                          "git diff*",
+                          "git log*",
+                          "git show*",
+                          "ls*",
+                          "pwd"
+                        ],
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "maxDirectSubagentsPerTurn": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              },
+              "subagents": {
+                "default": {},
+                "type": "object",
+                "properties": {
+                  "maxParallel": {
+                    "default": 4,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "maxTotal": {
+                    "default": 60,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "independentReviews": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "stopGuard": {
+                "default": {},
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "maxNudges": {
+                    "default": 3,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "respectQuestions": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "stagnation": {
+                "default": {},
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "extends": {
+            "type": "string",
+            "description": "Name eines anderen Profils, von dem geerbt wird"
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      }
+    }
+  },
+  "additionalProperties": false,
+  "title": "FiGr configuration (.opencode/figr.jsonc)"
+}

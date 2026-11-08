@@ -1,0 +1,66 @@
+{
+  "name": "opencode-figr",
+  "version": "0.1.0",
+  "description": "FiGr – Fixed Guardrails: erzwingt Reviews, Reihenfolgen, Best-of-N und Multi-Plan für Orchestrator-Workflows in opencode v2",
+  "type": "module",
+  "license": "MIT",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "exports": {
+    ".": "./server.ts",
+    "./server": "./server.ts",
+    "./tui": "./tui.tsx"
+  },
+  "files": [
+    "server.ts",
+    "tui.tsx",
+    "src",
+    "examples",
+    "figr.schema.json",
+    "README.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.tui.json",
+    "lint": "eslint .",
+    "depcruise": "depcruise src server.ts --config .dependency-cruiser.cjs",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "schema": "node --experimental-strip-types scripts/gen-schema.ts",
+    "check": "pnpm typecheck && pnpm lint && pnpm depcruise && pnpm test"
+  },
+  "peerDependencies": {
+    "@opencode/plugin": ">=2.2.0",
+    "@opentui/solid": ">=0.8.0",
+    "solid-js": ">=1.9.0"
+  },
+  "peerDependenciesMeta": {
+    "@opentui/solid": {
+      "optional": true
+    },
+    "solid-js": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "jsonc-parser": "^3.3.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@opencode/plugin": "2.2.6",
+    "@opencode/theme": "2.2.6",
+    "@opentui/core": "0.8.1",
+    "@opentui/solid": "0.8.1",
+    "@types/node": "^22.20.5",
+    "@vitest/coverage-v8": "^5.1.0",
+    "dependency-cruiser": "^18.7.2",
+    "effect": "^4.1.2",
+    "eslint": "^10.14.0",
+    "solid-js": "1.9.17",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.1.0"
+  }
+}
