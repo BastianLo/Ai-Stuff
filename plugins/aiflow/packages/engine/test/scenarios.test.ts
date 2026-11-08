@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { workflowSchema, type WorkflowInput } from "@aiflow/core";
+import { evaluatePermission, workflowSchema, type WorkflowInput } from "@aiflow/core";
 import { createHarness, loadDefinitions, examplesDir, sleep, type FakeEntry } from "@aiflow/testkit";
 
 const defs = loadDefinitions(examplesDir);
@@ -264,6 +264,29 @@ describe("Sub-Agenten", () => {
     expect(h.runtime.callsFor("plan")[0]?.permissions).not.toContainEqual({ action: "subagent", resource: "*", effect: "deny" });
     expect(orchestrator?.permissions).toContainEqual({ action: "subagent", resource: "*", effect: "deny" });
     expect(h.runtime.callsFor("plan")[0]?.prompt).toContain("Ergebnisse der Sub-Agenten");
+  });
+
+  // Lese-Tools von SkillSmith (src/host/tools.ts READ_TOOLS) plus call_script und opencodes eigenes skill-Tool
+  const SKILLSMITH_TOOLS = [
+    "skill_search", "skill_list", "skill_read", "knowledge_search", "knowledge_list", "knowledge_read", "glossary_lookup", "glossary_list",
+    "error_lookup", "error_list", "script_search", "script_list", "script_read", "docs_search", "history_search",
+    "memory_search", "memory_list", "memory_read", "graph_neighbors", "call_script", "skill",
+  ];
+
+  it("sperrt Plugin-Tools anderer Plugins (Beispiel SkillSmith) in keinem Schritt: Presets, Nur-lesen-Reviews, erzwungene Delegation, Sub-Agenten", async () => {
+    const review = createHarness({ script: { plan: { docs: { "plan.md": "# Plan" } } } });
+    await review.run("feature-review");
+    const orchestrated = createHarness({ script: research });
+    await orchestrated.run("research-feature");
+    const requests = [...review.runtime.calls, ...orchestrated.runtime.calls];
+    expect(new Set(requests.map((r) => r.agent.permissions.preset))).toEqual(new Set(["read-only", "implement"]));
+    expect(requests.some((r) => r.delegation?.mode === "enforced")).toBe(true);
+    for (const request of requests) {
+      for (const tool of SKILLSMITH_TOOLS) {
+        // opencode v1: ohne Regel erlaubt; v2 fragt nur bei Tools, die selbst eine Erlaubnis anfordern
+        expect(evaluatePermission(request.permissions, tool, "*", "allow"), `${request.label}: ${tool}`).toBe("allow");
+      }
+    }
   });
 
   it("erzwingt Delegation", async () => {

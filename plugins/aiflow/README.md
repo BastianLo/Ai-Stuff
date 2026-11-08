@@ -47,6 +47,8 @@ Jeder Agent-Schritt ist eine normale opencode-Session im Worker. Der Worker läd
 - **Fragen des Agenten an dich** laufen über das Tool `aiflow_ask` in die Inbox und in die TUI-Übersicht. Pro Agent abschaltbar.
 - **Native opencode-Sub-Agenten** (Tool `task`) sind erlaubt. Ihre Kind-Sessions erben die Regeln des Schritts, auch in opencode v2, wo opencode das selbst nicht tut. Bei erzwungener AiFlow-Delegation sind sie gesperrt.
 
+Beispiel SkillSmith: Die Lese-Tools (`skill_search`, `knowledge_search`, `memory_search`, `error_lookup`, `script_read`, `call_script`, `graph_neighbors` …) stehen jedem AiFlow-Agenten zur Verfügung. Das gilt auch für Nur-lesen-Reviewer, Orchestratoren mit erzwungener Delegation und Kind-Sessions nativer Sub-Agenten; ein Test sichert das ab. Hinweise, Fehlerlösungen an der Shell-Ausgabe und die Hintergrund-Reviews greifen wie in normalen Sessions. Wissen ordnet SkillSmith über das Git-Remote dem richtigen Projekt zu, weil AiFlow-Worktrees echte `git worktree`s des Repos sind. Voraussetzung: SkillSmith steht in der opencode-Konfiguration, die der Agent-Worker lädt (siehe `opencodeConfig`). Einzelne Plugin-Tools sperrst du pro Agent mit einer Regel, z. B. `call_script` → verbieten.
+
 Bewusst anders als in einer normalen Session: Das Original-Projekt ist für Agenten tabu. Änderungen entstehen im Worktree des Runs und kommen erst über das Review ins Projekt. Dazu kommen die Rechte, die du pro Agent oder Knoten vergibst (Preset, Regeln, Dokumentzugriffe, Nur-lesen).
 
 Delegation und Rückfragen laufen zwischen Plugin und Daemon als Auftrag mit Abfrage. Ein Sub-Agent oder eine Antwort darf also beliebig lange dauern, ohne dass ein HTTP-Timeout greift.
@@ -67,7 +69,7 @@ Die Regeln werden auf die Tool-Namen `<server>_*` abgebildet (gleiches Schema in
 
 | Befehl | Zweck |
 | --- | --- |
-| `pnpm check` | Typecheck, Lint, Paketgrenzen, 120 Unit-/Integrationstests |
+| `pnpm check` | Typecheck, Lint, Paketgrenzen, 121 Unit-/Integrationstests |
 | `pnpm test:e2e` | 7 Playwright-Tests gegen Daemon mit Simulations-Runtime |
 | `node scripts/screenshots.mjs` | Screenshots neu erzeugen (nach `pnpm build`) |
 

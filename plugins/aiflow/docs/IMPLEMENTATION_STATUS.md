@@ -30,7 +30,7 @@ Arbeitsnotizen für die Umsetzung von PLAN.md, Phasen 0–8. Wird nach jedem Sch
 - [~] P6 Plugin Bridge-Rolle (v1/v2 Server + TUI geschrieben, typgeprüft gegen echte APIs; 6 Tests; Smoke-Test mit echtem opencode offen)
 - [x] P7 Web II: Run-Ansicht (Live-Graph, Gantt, Schritt-Details mit Prompt/Verlauf/Diff), Review (Teil-Übernahme, Änderungen anfordern, Branch), History, Inbox, Dashboard
 - [x] P8 Für-jedes, Sub-Workflows, Sub-Agenten (Wellen, Budgets, erzwungen/optional), Stimmen, Simulation, Playground, Stagnationserkennung bei Schleifen
-- [x] Tests: 120 Unit/Integration (`pnpm check`), 7 Playwright-E2E (`pnpm test:e2e`)
+- [x] Tests: 121 Unit/Integration (`pnpm check`), 7 Playwright-E2E (`pnpm test:e2e`)
 - [x] MCP-Rechte pro Agent (Standard erlaubt/verboten, Ausnahmen pro Server; Abbildung auf `<server>_*` in v1/v2, harte Prüfung im Plugin; erzwungene Delegation sperrt MCP)
 - [x] Gleichstellung mit normalen Sessions: Rückfragen von opencode („ask“, Events `permission.asked` → `permission.reply` in v1/v2) nach `permissions.onAsk` (Inbox/erlauben/ablehnen); Fragen an den Nutzer über `aiflow_ask`; native Sub-Agenten erlaubt, Kind-Sessions über `session.created`/`parentID` dem Schritt zugeordnet (Regeln, Rückfragen, Aktivität); kein pauschales `external_directory`-Verbot mehr, nur das Original-Projekt ist gesperrt; Delegation/Rückfragen als Auftrag mit Abfrage (keine HTTP-Timeouts)
 - [x] Konfigurierbar: opencode-Konfigurationsdatei für den Worker (`OPENCODE_CONFIG`) und Datenverzeichnis (CLI-Option, Umgebung, `config.json`, Plugin-Optionen)

@@ -57,7 +57,14 @@ describe("Guard der Worker-Rolle", () => {
 
 describe("Gleichstellung mit normalen Sessions", () => {
   it("lässt Plugin-Tools (z. B. Skill-/Wissenssuche) und Skills ohne Regel durch", () => {
-    for (const tool of ["skill_search", "skill_list", "skill", "todowrite", "lsp_hover"]) expect(guardToolCall(info, tool, { query: "auth" })).toBeUndefined();
+    // u. a. die Lese-Tools von SkillSmith; auch in Kind-Sessions nativer Sub-Agenten
+    const tools = ["skill_search", "skill_list", "skill_read", "knowledge_search", "glossary_lookup", "error_lookup", "script_read", "call_script", "docs_search", "history_search", "memory_search", "graph_neighbors", "skill", "todowrite"];
+    for (const tool of tools) {
+      expect(guardToolCall(info, tool, { query: "auth" })).toBeUndefined();
+      expect(guardToolCall({ ...info, subSession: true }, tool, {})).toBeUndefined();
+    }
+    // Das AiFlow-Plugin blendet in Sessions nur seine eigenen Tools aus, nie Tools anderer Plugins
+    expect(WORKER_TOOL_NAMES.every((n) => n.startsWith("aiflow_"))).toBe(true);
     // Nur eine ausdrückliche Regel sperrt ein Plugin-Tool
     const blocked = { ...info, permissions: [...info.permissions, { action: "skill_*", resource: "*", effect: "deny" as const }] };
     expect(guardToolCall(blocked, "skill_search", {})).toContain("nicht erlaubt");
