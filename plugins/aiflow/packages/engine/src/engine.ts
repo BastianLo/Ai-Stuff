@@ -530,6 +530,15 @@ class RunController {
     }
     if (e.loop) {
       const count = this.state.edgeCounts[edge.key] ?? 0;
+      const fingerprint = feedback?.replace(/\d+(\.\d+)?\s*(ms|s)\b/g, "").trim();
+      const stagnating = count > 0 && fingerprint !== undefined && fingerprint !== "" && this.state.loopFeedback?.[edge.key] === fingerprint;
+      if (fingerprint) this.state.loopFeedback = { ...(this.state.loopFeedback ?? {}), [edge.key]: fingerprint };
+      if (stagnating) {
+        this.emit("loop.limit_reached", { edge: `${edge.from}.${edge.port}->${edge.to}`, max: e.loop.max, escalateTo: e.loop.onExceeded, reason: "stagnation" }, step.id);
+        inbound.exceeded = true;
+        inbound.feedback = `${inbound.feedback ? `${inbound.feedback}\n\n` : ""}Keine Fortschritte: Das Feedback ist unverändert seit dem letzten Durchlauf (${edge.from} → ${edge.to}).`;
+        return { to: e.loop.onExceeded, inbound };
+      }
       if (count >= e.loop.max) {
         this.emit("loop.limit_reached", { edge: `${edge.from}.${edge.port}->${edge.to}`, max: e.loop.max, escalateTo: e.loop.onExceeded }, step.id);
         inbound.exceeded = true;

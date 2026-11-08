@@ -163,9 +163,10 @@ describe("Testlauf und Playground", () => {
     expect(result.status).toBe("completed");
     expect(result.path.map((p) => p.nodeId)).toEqual(["start", "triage", "quick", "quickchecks", "applied"]);
     const failing = await client.simulate("feature-review", { scriptExitCode: 1, choices: { escalate: "abbrechen" } });
-    expect(failing.path.filter((p) => p.nodeId === "implement").length).toBe(4);
+    // Gleiche Fehlerausgabe → Stagnation: nach dem ersten Wiederholversuch wird eskaliert
+    expect(failing.path.filter((p) => p.nodeId === "implement").length).toBe(2);
     const retry = await client.simulate("feature-review", { scriptExitCode: 1 });
-    expect(retry.path.filter((p) => p.nodeId === "implement").length).toBe(8);
+    expect(retry.path.filter((p) => p.nodeId === "implement").length).toBe(4);
     expect(failing.status).toBe("cancelled");
   });
 

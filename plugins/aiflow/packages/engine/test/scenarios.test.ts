@@ -63,7 +63,7 @@ describe("Feature mit Multi-Review", () => {
   });
 
   it("eskaliert nach dem Schleifenlimit an den Menschen und bricht auf Wunsch ab", async () => {
-    const h = createHarness({ script: featureReviewHappy, scripts: () => ({ exitCode: 1, output: "rot" }) });
+    const h = createHarness({ script: featureReviewHappy, scripts: (_c, _w, call) => ({ exitCode: 1, output: `rot ${call}` }) });
     const id = h.engine.start(h.spec("feature-review"));
     const waiting = await h.engine.wait(id, ["waiting_input"]);
     const item = waiting.inbox.find((i) => i.kind === "human");
@@ -76,9 +76,18 @@ describe("Feature mit Multi-Review", () => {
     expect(done.outcome).toBe("cancelled");
   });
 
+  it("eskaliert früher, wenn das Feedback stagniert", async () => {
+    const h = createHarness({ script: featureReviewHappy, scripts: () => ({ exitCode: 1, output: "FAIL: immer derselbe Test" }) });
+    const id = h.engine.start(h.spec("feature-review"));
+    await h.engine.wait(id, ["waiting_input"]);
+    expect(h.runtime.callsFor("implement")).toHaveLength(2);
+    expect(h.sink.ofRun(id).find((e) => e.type === "loop.limit_reached")?.data.reason).toBe("stagnation");
+    h.engine.cancel(id);
+  });
+
   it("setzt Schleifenzähler zurück, wenn der Mensch weiter versuchen lässt", async () => {
     let calls = 0;
-    const h = createHarness({ script: featureReviewHappy, scripts: () => ({ exitCode: ++calls <= 4 ? 1 : 0, output: "x" }) });
+    const h = createHarness({ script: featureReviewHappy, scripts: () => ({ exitCode: ++calls <= 4 ? 1 : 0, output: `x ${calls}` }) });
     const id = h.engine.start(h.spec("feature-review"));
     const waiting = await h.engine.wait(id, ["waiting_input"]);
     h.engine.answer(id, waiting.inbox[0]!.id, "weiter-versuchen", "Bitte nochmal mit Fokus auf die Tests");

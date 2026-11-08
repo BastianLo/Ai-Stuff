@@ -94,6 +94,8 @@ export interface RunState {
   steps: Record<string, StepRecord>;
   stepOrder: string[];
   edgeCounts: Record<string, number>;
+  /** Letztes Feedback je Schleifenkante (Stagnationserkennung). */
+  loopFeedback?: Record<string, string>;
   nodeVisits: Record<string, number>;
   forks: Record<string, ForkState>;
   inbox: InboxItem[];
