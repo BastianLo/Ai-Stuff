@@ -12,8 +12,8 @@ export function useWorkflows(project?: string) {
 export function useSnippets(project?: string) {
   return useQuery({ queryKey: ["definitions", "snippets", project], queryFn: () => api.snippets(project) });
 }
-export function useRuntime() {
-  return useQuery({ queryKey: ["runtime"], queryFn: () => api.runtime(), staleTime: 60_000 });
+export function useRuntime(project?: string) {
+  return useQuery({ queryKey: ["runtime", project], queryFn: () => api.runtime(project), staleTime: 60_000 });
 }
 
 export function agentMap(entries: { id: string; definition?: AgentDefinition; shadowed?: boolean }[] | undefined): Map<string, AgentDefinition> {

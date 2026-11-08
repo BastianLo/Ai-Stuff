@@ -15,13 +15,46 @@ node packages/cli/dist/index.js setup opencode              # Plugin in opencode
 node packages/cli/dist/index.js doctor                      # Umgebung prüfen
 ```
 
-Weitere Befehle: `run <workflow> "<prompt>" --follow`, `runs`, `workflows`, `agents`, `inbox`, `status`, `stop`.
+Weitere Befehle: `run <workflow> "<prompt>" --follow`, `runs`, `workflows`, `agents`, `inbox`, `status`, `stop`, `config`.
+
+## Konfiguration
+
+Zwei Einstellungen lassen sich dauerhaft setzen. Sie landen in `~/.config/aiflow/config.json`:
+
+```bash
+aiflow config set opencodeConfig ~/.config/opencode.jsonc   # opencode-Konfiguration für die Agenten
+aiflow config set dataDir ~/aiflow-daten                     # Datenbank, Worktrees, Dokumente, Logs
+aiflow config                                                # wirksame Werte anzeigen
+```
+
+Vorrang: Aufruf-Option (`--opencode-config`, `--data-dir`) > Umgebung (`AIFLOW_OPENCODE_CONFIG`, `AIFLOW_DATA_DIR`) > `config.json` > Standard (`~/.local/share/aiflow`). Das Auth-Token bleibt immer in `~/.config/aiflow`.
+
+Startet das opencode-Plugin den Daemon automatisch, gibt es dieselben Werte als Plugin-Optionen weiter:
+
+```jsonc
+// opencode v1: "plugin", opencode v2: "plugins" mit { "package": …, "options": … }
+"plugin": [["opencode-aiflow", { "url": "http://127.0.0.1:5739", "opencodeConfig": "~/.config/opencode.jsonc", "dataDir": "~/aiflow-daten" }]]
+```
+
+`opencodeConfig` wird dem Agent-Worker als `OPENCODE_CONFIG` übergeben (opencode v1 und v2). opencode lädt die Datei **zusätzlich** zur globalen Konfiguration und vor der `opencode.json` des Projekts. Das AiFlow-Plugin muss in einer dieser Dateien eingetragen sein, damit die Worker-Rolle aktiv ist. `aiflow setup opencode` schreibt den Eintrag in die konfigurierte Datei.
+
+## Agenten-Sessions und MCP
+
+Jeder Agent-Schritt ist eine normale opencode-Session im Worker. Sie wird im gewöhnlichen opencode-Speicher abgelegt, mit dem Titel `AiFlow · <Knoten>`, den Metadaten `aiflowRunId`/`aiflowStepId` und dem Run-Worktree als Verzeichnis. Werkzeuge, die opencode-Sessions auswerten, sehen diese Sessions also auch.
+
+Die MCP-Server aus der opencode-Konfiguration stehen den Agenten zur Verfügung. Pro Agent (Editor → „MCP & Skills“) gilt:
+
+- **Nicht aufgeführte Server**: erlaubt (Standard) oder verboten (dann nur ausdrücklich freigegebene Server).
+- **Pro Server**: erlauben oder verbieten; ein Verbot schlägt eine Erlaubnis.
+- **Erzwungene Delegation** an Sub-Agenten sperrt auch MCP-Tools (außer `mcp` steht in `keepTools`).
+
+Die Regeln werden auf die Tool-Namen `<server>_*` abgebildet (gleiches Schema in opencode v1 und v2). Gesetzt werden sie als Session-Rechte und zusätzlich hart im Plugin geprüft. Die Serverliste enthält auch die projektlokale Konfiguration des Arbeitsverzeichnisses.
 
 ## Entwicklung
 
 | Befehl | Zweck |
 | --- | --- |
-| `pnpm check` | Typecheck, Lint, Paketgrenzen, 96 Unit-/Integrationstests |
+| `pnpm check` | Typecheck, Lint, Paketgrenzen, 109 Unit-/Integrationstests |
 | `pnpm test:e2e` | 7 Playwright-Tests gegen Daemon mit Simulations-Runtime |
 | `node scripts/screenshots.mjs` | Screenshots neu erzeugen (nach `pnpm build`) |
 

@@ -94,7 +94,8 @@ export function checksFor(tool: string, input: unknown): { action: string; resou
     case "subagent":
       return [{ action: "subagent", resource: "*" }];
     default:
-      return [];
+      // Übrige Tools (u. a. MCP `<server>_<tool>`) werden über ihren Namen geprüft; die Runtime liefert dafür `<server>_*`-Regeln.
+      return [{ action: tool, resource: "*" }];
   }
 }
 

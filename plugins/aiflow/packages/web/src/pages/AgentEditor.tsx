@@ -28,7 +28,7 @@ export function AgentEditor() {
   const [scope, setScope] = useState<"global" | "project">("global");
   const snippets = snippetList(useSnippets(project).data);
   const agents = useAgents(project);
-  const runtime = useRuntime();
+  const runtime = useRuntime(project);
 
   useEffect(() => {
     if (entry.data?.definition) {
@@ -239,28 +239,7 @@ export function AgentEditor() {
           )}
 
           {tab === "mcp" && (
-            <div className="max-w-2xl space-y-3">
-              <p className="text-sm text-slate-600 dark:text-slate-400">MCP-Server aus der opencode-Konfiguration. Ohne Auswahl sind alle erlaubt, die nicht abgewählt sind.</p>
-              {(runtime.data?.mcp ?? []).length === 0 && <div className="text-sm text-slate-500">Keine MCP-Server gefunden (Runtime: {runtime.data?.id}).</div>}
-              {runtime.data?.mcp.map((m) => (
-                <div key={m.name} className="flex items-center gap-3 text-sm">
-                  <Badge color={m.status === "connected" ? "green" : "amber"}>{m.status}</Badge>
-                  <span className="flex-1 font-medium">{m.name}</span>
-                  <Select
-                    value={agent.mcp.allow.includes(m.name) ? "allow" : agent.mcp.deny.includes(m.name) ? "deny" : "default"}
-                    onChange={(e) => {
-                      const allow = agent.mcp.allow.filter((x) => x !== m.name);
-                      const deny = agent.mcp.deny.filter((x) => x !== m.name);
-                      if (e.target.value === "allow") allow.push(m.name);
-                      if (e.target.value === "deny") deny.push(m.name);
-                      update({ mcp: { allow, deny } });
-                    }}
-                    options={[{ value: "default", label: "Standard" }, { value: "allow", label: "erlauben" }, { value: "deny", label: "verbieten" }]}
-                    className="w-36"
-                  />
-                </div>
-              ))}
-            </div>
+            <McpTab agent={agent} servers={runtime.data?.mcp ?? []} runtimeId={runtime.data?.id} update={update} />
           )}
 
           {tab === "output" && <OutputTab agent={agent} update={update} />}
@@ -389,6 +368,73 @@ function PlaygroundTab({ agentId, disabled }: { agentId: string; disabled: boole
       </Button>
       {!project && <div className="text-xs text-amber-600">Bitte oben ein Projekt wählen.</div>}
       <ErrorBox error={run.error} />
+    </div>
+  );
+}
+
+/** MCP-Zugriff: Standard für alle Server plus Ausnahmen pro Server (auch für projektlokale, hier nicht gelistete Server). */
+function McpTab({
+  agent,
+  servers,
+  runtimeId,
+  update,
+}: {
+  agent: AgentDefinition;
+  servers: { name: string; status: string }[];
+  runtimeId: string | undefined;
+  update: (patch: Partial<AgentDefinition>) => void;
+}) {
+  const [extra, setExtra] = useState("");
+  const status = new Map(servers.map((s) => [s.name, s.status]));
+  const names = [...new Set([...servers.map((s) => s.name), ...agent.mcp.allow, ...agent.mcp.deny])].sort();
+  const set = (name: string, value: string) => {
+    const allow = agent.mcp.allow.filter((x) => x !== name);
+    const deny = agent.mcp.deny.filter((x) => x !== name);
+    if (value === "allow") allow.push(name);
+    if (value === "deny") deny.push(name);
+    update({ mcp: { ...agent.mcp, allow, deny } });
+  };
+  return (
+    <div className="max-w-2xl space-y-4">
+      <p className="text-sm text-slate-600 dark:text-slate-400">
+        MCP-Server aus der opencode-Konfiguration des Workers. Die Regeln gelten für alle Tools eines Servers (<code>&lt;server&gt;_*</code>) und werden in opencode v1 und v2 durchgesetzt.
+      </p>
+      <Field label="Nicht aufgeführte Server">
+        <Select
+          value={agent.mcp.default}
+          onChange={(e) => update({ mcp: { ...agent.mcp, default: e.target.value as AgentDefinition["mcp"]["default"] } })}
+          options={[{ value: "allow", label: "erlaubt (Standard)" }, { value: "deny", label: "verboten – nur ausdrücklich erlaubte Server" }]}
+          className="max-w-md"
+        />
+      </Field>
+      {names.length === 0 && <div className="text-sm text-slate-500">Keine MCP-Server gefunden (Runtime: {runtimeId ?? "–"}).</div>}
+      {names.map((name) => (
+        <div key={name} className="flex items-center gap-3 text-sm">
+          {status.has(name) ? <Badge color={status.get(name) === "connected" ? "green" : "amber"}>{status.get(name)}</Badge> : <Badge title="Nicht vom Worker gemeldet (z. B. projektlokale Konfiguration)">unbekannt</Badge>}
+          <span className="flex-1 font-medium">{name}</span>
+          <Select
+            value={agent.mcp.allow.includes(name) ? "allow" : agent.mcp.deny.includes(name) ? "deny" : "default"}
+            onChange={(e) => set(name, e.target.value)}
+            options={[{ value: "default", label: agent.mcp.default === "allow" ? "Standard (erlaubt)" : "Standard (verboten)" }, { value: "allow", label: "erlauben" }, { value: "deny", label: "verbieten" }]}
+            className="w-44"
+          />
+        </div>
+      ))}
+      <div className="flex items-end gap-2">
+        <Field label="Weiterer Server (Name wie in opencode.json)">
+          <Input value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="z. B. jira" />
+        </Field>
+        <Button
+          size="sm"
+          disabled={!extra.trim() || names.includes(extra.trim())}
+          onClick={() => {
+            set(extra.trim(), agent.mcp.default === "allow" ? "deny" : "allow");
+            setExtra("");
+          }}
+        >
+          Hinzufügen
+        </Button>
+      </div>
     </div>
   );
 }

@@ -69,6 +69,7 @@ export interface RuntimeInfo {
   models: { providerID: string; modelID: string; name: string }[];
   mcp: { name: string; status: string }[];
   plugins: string[];
+  paths: { config: string; data: string; opencodeConfig?: string };
 }
 
 export interface SimulationResult {
@@ -196,7 +197,8 @@ export class AiflowClient {
   answer = (runId: string, itemId: string, option: string, text?: string) => this.request<{ ok: true }>("POST", `/api/inbox/${runId}/${itemId}`, { option, text });
 
   // Runtime
-  runtime = () => this.request<RuntimeInfo>("GET", "/api/runtime");
+  /** Mit `project` enthält die MCP-Liste auch die projektlokale opencode-Konfiguration. */
+  runtime = (project?: string) => this.request<RuntimeInfo>("GET", "/api/runtime", undefined, { project });
   loginUrl = (otp: string) => `${this.baseUrl}/login?otp=${encodeURIComponent(otp)}`;
   createLogin = (project?: string) => this.request<{ url: string }>("POST", "/api/login-links", { project });
 

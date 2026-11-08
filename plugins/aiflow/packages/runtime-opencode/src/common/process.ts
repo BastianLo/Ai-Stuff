@@ -1,4 +1,5 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { AiflowError } from "@aiflow/core";
@@ -9,6 +10,8 @@ export interface WorkerOptions {
   api?: OpencodeApi | "auto";
   daemonUrl: string;
   workerToken: string;
+  /** Zusätzliche opencode-Konfigurationsdatei (`OPENCODE_CONFIG`, v1 und v2), z. B. `~/.config/opencode.jsonc`. */
+  configFile?: string;
   /** Wird bei jedem (Neu-)Start mit der neuen Adresse aufgerufen. */
   onReady?: (info: WorkerInfo) => void;
   log?: (message: string) => void;
@@ -57,6 +60,8 @@ export class OpencodeWorker {
 
   async start(): Promise<WorkerInfo> {
     const binary = this.options.binary ?? "opencode";
+    const { configFile } = this.options;
+    if (configFile && !existsSync(configFile)) throw new AiflowError("RUNTIME", `opencode-Konfiguration nicht gefunden: ${configFile}`);
     const detected = await detectOpencode(binary);
     const api = this.options.api && this.options.api !== "auto" ? this.options.api : detected.api;
     const port = await freePort();
@@ -66,6 +71,7 @@ export class OpencodeWorker {
       AIFLOW_WORKER: "1",
       AIFLOW_DAEMON_URL: this.options.daemonUrl,
       AIFLOW_WORKER_TOKEN: this.options.workerToken,
+      ...(configFile ? { OPENCODE_CONFIG: configFile } : {}),
       ...(api === "v2" ? { OPENCODE_PASSWORD: password } : { OPENCODE_SERVER_PASSWORD: password }),
     };
     const child = spawn(binary, ["serve", "--hostname", "127.0.0.1", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });

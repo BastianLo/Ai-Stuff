@@ -15,7 +15,7 @@ export interface V1Client {
   };
   event: { subscribe(p?: Record<string, unknown>, o?: { signal?: AbortSignal }): Promise<{ stream: AsyncIterable<unknown> }> };
   provider: { list(): Promise<{ data?: unknown }> };
-  mcp: { status(): Promise<{ data?: unknown }> };
+  mcp: { status(p?: Record<string, unknown>): Promise<{ data?: unknown }> };
   config: { get(): Promise<{ data?: unknown }> };
 }
 
@@ -117,8 +117,8 @@ export class V1Driver implements OpencodeDriver {
     });
   }
 
-  async listMcp(): Promise<{ name: string; status: string }[]> {
-    return Object.entries(obj((await this.client.mcp.status()).data)).map(([name, s]) => ({ name, status: str(obj(s).status) ?? "unknown" }));
+  async listMcp(directory?: string): Promise<{ name: string; status: string }[]> {
+    return Object.entries(obj((await this.client.mcp.status(directory ? { directory } : undefined)).data)).map(([name, s]) => ({ name, status: str(obj(s).status) ?? "unknown" }));
   }
 
   async listPlugins(): Promise<string[]> {

@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -10,10 +10,11 @@ import { createDemoProject } from "@aiflow/testkit";
 let running: RunningDaemon;
 let client: AiflowClient;
 let project: string;
+let root: string;
 const port = 40000 + Math.floor(Math.random() * 20000);
 
 beforeAll(async () => {
-  const root = mkdtempSync(join(tmpdir(), "aiflow-daemon-"));
+  root = mkdtempSync(join(tmpdir(), "aiflow-daemon-"));
   running = await startDaemon({ paths: { config: join(root, "config"), data: join(root, "data") }, port, runtime: "simulation", simulationSpeed: 0, seedFrom: examplesDir, webDir: "/nicht-vorhanden" });
   client = new AiflowClient({ baseUrl: running.url, token: running.daemon.token });
   project = createDemoProject();
@@ -21,6 +22,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await running.close();
+  rmSync(root, { recursive: true, force: true });
 });
 
 const raw = (path: string, init: RequestInit = {}) => fetch(`${running.url}${path}`, init);

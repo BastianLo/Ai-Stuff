@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AgentStepContext, AgentStepRequest } from "@aiflow/engine";
 import { agentSchema, buildHandoffSchema } from "@aiflow/core";
 import { createHarness, sampleFromSchema } from "@aiflow/testkit";
-import { extractJson, mapV1Event, mapV2Event, OpencodeRuntime, toV1Rules, V1Driver, V2Driver, WorkerBridge, type V1Client, type V2Client } from "@aiflow/runtime-opencode";
+import { expandMcpRules, extractJson, mapV1Event, mapV2Event, mcpToolPrefix, OpencodeRuntime, toV1Rules, toV2Rules, V1Driver, V2Driver, WorkerBridge, type V1Client, type V2Client } from "@aiflow/runtime-opencode";
 
 const schema = buildHandoffSchema({ branches: [{ port: "approved", description: "ok", instructions: [] }, { port: "rejected", description: "nok", instructions: [] }] });
 
@@ -173,6 +173,68 @@ describe("V2-Treiber", () => {
   it("findet JSON in Text", () => {
     expect(extractJson('blabla {"a":1} und ```json\n{"b":2}\n```')).toEqual({ b: 2 });
     expect(extractJson("nichts")).toBeUndefined();
+  });
+});
+
+describe("MCP-Rechte", () => {
+  const servers = ["context7", "github", "jira.cloud"];
+
+  it("bildet mcp-Regeln auf die Tool-Namen <server>_* ab (Reihenfolge bleibt)", () => {
+    expect(mcpToolPrefix("jira.cloud")).toBe("jira_cloud");
+    const rules = expandMcpRules(
+      [
+        { action: "read", resource: "*", effect: "allow" },
+        { action: "mcp", resource: "*", effect: "deny" },
+        { action: "mcp", resource: "github", effect: "allow" },
+        { action: "mcp", resource: "neu", effect: "allow" },
+        { action: "mcp", resource: "jira*", effect: "deny" },
+      ],
+      servers,
+    );
+    expect(rules).toEqual([
+      { action: "read", resource: "*", effect: "allow" },
+      { action: "context7_*", resource: "*", effect: "deny" },
+      { action: "github_*", resource: "*", effect: "deny" },
+      { action: "jira_cloud_*", resource: "*", effect: "deny" },
+      { action: "github_*", resource: "*", effect: "allow" },
+      { action: "neu_*", resource: "*", effect: "allow" },
+      { action: "jira_cloud_*", resource: "*", effect: "deny" },
+    ]);
+    expect(toV1Rules(rules)[1]).toEqual({ permission: "context7_*", pattern: "*", action: "deny" });
+    expect(toV2Rules(rules)[4]).toEqual({ action: "github_*", resource: "*", effect: "allow" });
+  });
+
+  it("setzt die aufgelösten Regeln in der Session und in der harten Prüfung der Bridge", async () => {
+    const client = v1Client(() => ({ summary: "s", branch: "approved", branchReason: "r" }));
+    const directories: unknown[] = [];
+    client.mcp.status = async (p) => (directories.push(p), { data: { github: { status: "connected" }, context7: { status: "connected" } } });
+    const bridge = new WorkerBridge();
+    let guarded: unknown[] = [];
+    const runtime = new OpencodeRuntime(new V1Driver(client), bridge);
+    const prompt = client.session.prompt.bind(client.session);
+    client.session.prompt = async (p, o) => {
+      guarded = [bridge.guard(String(p.sessionID), "github_create_issue", "*"), bridge.guard(String(p.sessionID), "context7_query", "*")];
+      return prompt(p, o);
+    };
+    const permissions = [{ action: "mcp", resource: "*", effect: "allow" as const }, { action: "mcp", resource: "github", effect: "deny" as const }];
+    await runtime.runAgentStep(request({ permissions }), context());
+    expect(directories).toEqual([{ directory: "/tmp/ws" }]);
+    const create = client.calls[0]?.create as Record<string, unknown>;
+    expect(create.permission).toEqual([
+      { permission: "github_*", pattern: "*", action: "allow" },
+      { permission: "context7_*", pattern: "*", action: "allow" },
+      { permission: "github_*", pattern: "*", action: "deny" },
+    ]);
+    expect(guarded).toEqual([{ allow: false, message: expect.stringContaining("github_create_issue") }, { allow: true }]);
+  });
+
+  it("liest die v2-MCP-Liste ({ location, data }, Status als Objekt) pro Verzeichnis", async () => {
+    const inputs: unknown[] = [];
+    const client = {
+      mcp: { list: async (i?: Record<string, unknown>) => (inputs.push(i), { location: { directory: "/p" }, data: [{ name: "github", status: { status: "connected" } }, { name: "jira", status: { status: "failed", error: "x" } }] }) },
+    } as unknown as V2Client;
+    expect(await new V2Driver(client).listMcp("/p")).toEqual([{ name: "github", status: "connected" }, { name: "jira", status: "failed" }]);
+    expect(inputs).toEqual([{ location: { directory: "/p" } }]);
   });
 });
 

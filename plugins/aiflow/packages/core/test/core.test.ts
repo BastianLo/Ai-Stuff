@@ -5,6 +5,7 @@ import {
   evaluateCondition,
   evaluatePermission,
   majorityVote,
+  mcpRules,
   nodePorts,
   parseDuration,
   parseHandoff,
@@ -188,6 +189,20 @@ describe("Rechte und Hilfsfunktionen", () => {
     expect(evaluatePermission(rules, "shell", "git diff HEAD")).toBe("allow");
     expect(evaluatePermission(presetRules("implement"), "shell", "git push origin main")).toBe("deny");
     expect(evaluatePermission(presetRules("implement"), "edit", "src/a.ts")).toBe("allow");
+  });
+
+  it("MCP-Zugriff: Standard pro Agent, Ausnahmen pro Server, Verbot schlägt Erlaubnis", () => {
+    const rules = mcpRules({ default: "deny", allow: ["github", "jira"], deny: ["jira"] });
+    expect(evaluatePermission(rules, "mcp", "context7")).toBe("deny");
+    expect(evaluatePermission(rules, "mcp", "github")).toBe("allow");
+    expect(evaluatePermission(rules, "mcp", "jira")).toBe("deny");
+    expect(evaluatePermission(mcpRules({ default: "allow", allow: [], deny: [] }), "mcp", "x")).toBe("allow");
+  });
+
+  it("wertet Muster in Aktionen aus (MCP-Tools <server>_*)", () => {
+    const rules = [{ action: "github_*", resource: "*", effect: "deny" as const }];
+    expect(evaluatePermission(rules, "github_create_issue", "*", "allow")).toBe("deny");
+    expect(evaluatePermission(rules, "gitlab_x", "*", "allow")).toBe("allow");
   });
 
   it("parst Dauern", () => {

@@ -136,6 +136,7 @@ export class Daemon {
     const host = this.options.host ?? "127.0.0.1";
     this.worker = new OpencodeWorker({
       ...(this.options.opencodeBinary ? { binary: this.options.opencodeBinary } : {}),
+      ...(this.options.paths.opencodeConfig ? { configFile: this.options.paths.opencodeConfig } : {}),
       api: this.options.opencodeApi ?? "auto",
       daemonUrl: `http://${host}:${this.options.port}`,
       workerToken: this.workerToken,
@@ -324,12 +325,15 @@ export class Daemon {
     return validateWorkflow(parsed.data, { agents: new Map(Object.entries(defs.agents)), workflows: new Map(Object.entries(defs.workflows)), maxParallelSessions: this.options.maxParallelSessions ?? 4 });
   }
 
-  async runtimeInfo() {
+  /** Daten aus dem Worker für Editoren und Einstellungen; mit `projectDir` inkl. projektlokaler MCP-Server. */
+  async runtimeInfo(projectDir?: string) {
     const caps = this.runtime?.capabilities();
+    const { config, data, opencodeConfig } = this.options.paths;
+    const paths = { config, data, ...(opencodeConfig ? { opencodeConfig } : {}) };
     const [models, mcp, plugins] = this.driver
-      ? await Promise.all([this.driver.listModels().catch(() => []), this.driver.listMcp().catch(() => []), this.driver.listPlugins().catch(() => [])])
+      ? await Promise.all([this.driver.listModels().catch(() => []), this.driver.listMcp(projectDir).catch(() => []), this.driver.listPlugins().catch(() => [])])
       : [[{ providerID: "deepseek", modelID: "deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash" }], [], []];
-    return { id: this.runtimeStatus.id, ...(this.runtimeStatus.api ? { api: this.runtimeStatus.api } : {}), ...(caps ? { capabilities: caps } : {}), models, mcp, plugins };
+    return { id: this.runtimeStatus.id, ...(this.runtimeStatus.api ? { api: this.runtimeStatus.api } : {}), ...(caps ? { capabilities: caps } : {}), models, mcp, plugins, paths };
   }
 
   agentSchemaCheck(raw: unknown) {

@@ -11,6 +11,7 @@ Arbeitsnotizen für die Umsetzung von PLAN.md, Phasen 0–8. Wird nach jedem Sch
 - `exactOptionalPropertyTypes` vorerst aus (Reibung mit Zod-Optionals); alle anderen strikten Optionen an.
 - Simulations-Runtime (`--runtime simulation`) für Demos, Testlauf und E2E; schreibt echte Dateien.
 - Ports intern englisch: `next`, `error`; benutzerdefinierte Ports frei.
+- MCP-Rechte als versionsneutrale Aktion `mcp` (Ressource = Servername); die Runtime löst sie pro Session mit der Serverliste des Arbeitsverzeichnisses zu `<server>_*`-Regeln auf (Quelle: opencode v1.19.5 `mcp/catalog.ts` `toolName`, v2.2.6 `tool/mcp.ts` `name`; beide werten Muster in Aktionen aus).
 
 ## Wichtige Erkenntnisse
 - v2-Sessions nutzen den Standard-Agenten; der AiFlow-System-Prompt kommt per `session.hook("context")` aus der Worker-API.
@@ -27,7 +28,9 @@ Arbeitsnotizen für die Umsetzung von PLAN.md, Phasen 0–8. Wird nach jedem Sch
 - [~] P6 Plugin Bridge-Rolle (v1/v2 Server + TUI geschrieben, typgeprüft gegen echte APIs; 6 Tests; Smoke-Test mit echtem opencode offen)
 - [x] P7 Web II: Run-Ansicht (Live-Graph, Gantt, Schritt-Details mit Prompt/Verlauf/Diff), Review (Teil-Übernahme, Änderungen anfordern, Branch), History, Inbox, Dashboard
 - [x] P8 Für-jedes, Sub-Workflows, Sub-Agenten (Wellen, Budgets, erzwungen/optional), Stimmen, Simulation, Playground, Stagnationserkennung bei Schleifen
-- [x] Tests: 96 Unit/Integration (`pnpm check`), 7 Playwright-E2E (`pnpm test:e2e`)
+- [x] Tests: 109 Unit/Integration (`pnpm check`), 7 Playwright-E2E (`pnpm test:e2e`)
+- [x] MCP-Rechte pro Agent (Standard erlaubt/verboten, Ausnahmen pro Server; Abbildung auf `<server>_*` in v1/v2, harte Prüfung im Plugin; erzwungene Delegation sperrt MCP)
+- [x] Konfigurierbar: opencode-Konfigurationsdatei für den Worker (`OPENCODE_CONFIG`) und Datenverzeichnis (CLI-Option, Umgebung, `config.json`, Plugin-Optionen)
 - [x] Screenshots: `docs/screenshots` (16 Bilder, `node scripts/screenshots.mjs`)
 
 ## Offen

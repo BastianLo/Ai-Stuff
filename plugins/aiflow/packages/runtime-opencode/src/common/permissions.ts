@@ -1,4 +1,23 @@
-import type { PermissionRule } from "@aiflow/core";
+import { matchesPattern, type PermissionRule } from "@aiflow/core";
+
+/** Präfix der Tool-Namen eines MCP-Servers, identisch in opencode v1 und v2: `<server>_<tool>`, Sonderzeichen → `_`. */
+export function mcpToolPrefix(server: string): string {
+  return server.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+/**
+ * Ersetzt versionsneutrale `mcp`-Regeln (Ressource = Servername oder Muster) durch Regeln auf die Tool-Namen
+ * `<server>_*` der bekannten Server. Ein konkreter, (noch) nicht gemeldeter Servername wird trotzdem abgebildet.
+ * Reihenfolge bleibt erhalten, damit „letzte passende Regel gewinnt“ weiter gilt.
+ */
+export function expandMcpRules(rules: readonly PermissionRule[], servers: readonly string[]): PermissionRule[] {
+  return rules.flatMap((r) => {
+    if (r.action !== "mcp") return [r];
+    const literal = !/[*?]/.test(r.resource);
+    const targets = literal ? [r.resource] : servers.filter((s) => matchesPattern(r.resource, s));
+    return targets.map((s) => ({ action: `${mcpToolPrefix(s)}_*`, resource: "*", effect: r.effect }));
+  });
+}
 
 const V1_ACTION: Record<string, string> = { shell: "bash", subagent: "task" };
 

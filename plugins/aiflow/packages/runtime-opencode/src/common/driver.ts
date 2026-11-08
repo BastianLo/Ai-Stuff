@@ -52,6 +52,7 @@ export interface OpencodeDriver {
   /** Live-Aktivität aller Sessions (wird pro Session gefiltert). */
   activity(signal: AbortSignal): AsyncIterable<SessionActivity>;
   listModels(): Promise<ModelInfo[]>;
-  listMcp(): Promise<{ name: string; status: string }[]>;
+  /** MCP-Server; mit `directory` inklusive der projektlokalen Konfiguration dieses Verzeichnisses. */
+  listMcp(directory?: string): Promise<{ name: string; status: string }[]>;
   listPlugins(): Promise<string[]>;
 }

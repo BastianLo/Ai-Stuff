@@ -3,6 +3,7 @@ import type { AgentRuntime, AgentStepContext, AgentStepRequest, AgentStepResult,
 import type { WorkerBridge } from "./bridge.js";
 import type { OpencodeDriver, SessionActivity } from "./driver.js";
 import { extractJson, finalizePrompt } from "./handoff.js";
+import { expandMcpRules } from "./permissions.js";
 
 /** AgentRuntime über einen opencode-Worker (v1 oder v2, je nach Treiber). */
 export class OpencodeRuntime implements AgentRuntime {
@@ -34,8 +35,16 @@ export class OpencodeRuntime implements AgentRuntime {
     }
   }
 
+  /** Bekannte MCP-Server (global + Projekt-Konfiguration des Verzeichnisses); bei Fehlern leer. */
+  private async mcpServers(directory: string): Promise<string[]> {
+    const list = await this.driver.listMcp(directory).catch(() => []);
+    return list.map((s) => s.name).filter((n) => n.length > 0);
+  }
+
   async runAgentStep(request: AgentStepRequest, context: AgentStepContext): Promise<AgentStepResult> {
     const directory = request.workspace.path;
+    // MCP-Regeln einmal auflösen; Session-Rechte und harte Prüfung im Plugin nutzen dieselben Regeln.
+    request = { ...request, permissions: expandMcpRules(request.permissions, await this.mcpServers(directory)) };
     const sessionId = request.session?.resume
       ? request.session.resume
       : request.session?.forkFrom

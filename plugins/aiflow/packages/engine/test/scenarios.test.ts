@@ -257,6 +257,9 @@ describe("Sub-Agenten", () => {
     const orchestrator = h.runtime.callsFor("research")[0];
     expect(orchestrator?.systemPrompt).toContain("aiflow_delegate");
     expect(orchestrator?.permissions).toContainEqual({ action: "grep", resource: "*", effect: "deny" });
+    // Erzwungene Delegation sperrt auch MCP-Tools; andere Agenten behalten ihren MCP-Standard
+    expect(orchestrator?.permissions).toContainEqual({ action: "mcp", resource: "*", effect: "deny" });
+    expect(h.runtime.callsFor("plan")[0]?.permissions).toContainEqual({ action: "mcp", resource: "*", effect: "allow" });
     expect(h.runtime.callsFor("plan")[0]?.prompt).toContain("Ergebnisse der Sub-Agenten");
   });
 

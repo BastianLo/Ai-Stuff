@@ -3,7 +3,7 @@ import plugin from "../src/index.js";
 import { checksFor, guardToolCall, WorkerApi, type WorkerSessionInfo } from "../src/core/worker.js";
 import { WorkerHooks } from "../src/core/worker-hooks.js";
 import { statusLines, formatDuration } from "../src/core/bridge.js";
-import { resolveOptions, workerEnv } from "../src/core/config.js";
+import { resolveOptions, serveArgs, workerEnv } from "../src/core/config.js";
 import { delegateSchema, WORKER_TOOL_NAMES } from "../src/core/tools.js";
 import { createHarness } from "@aiflow/testkit";
 import type { RunView } from "@aiflow/client";
@@ -43,6 +43,10 @@ describe("Guard der Worker-Rolle", () => {
   it("blockiert verbotene Befehle, Schreibzugriffe und Dokumente", () => {
     expect(guardToolCall(info, "bash", { command: "npm publish" })).toContain("nicht erlaubt");
     expect(guardToolCall(info, "bash", { command: "git diff HEAD" })).toBeUndefined();
+    // MCP-Tools werden über ihren Namen gegen die von der Runtime aufgelösten `<server>_*`-Regeln geprüft
+    const mcp = { ...info, permissions: [...info.permissions, { action: "github_*", resource: "*", effect: "deny" as const }] };
+    expect(guardToolCall(mcp, "github_create_issue", { title: "x" })).toContain("nicht erlaubt");
+    expect(guardToolCall(mcp, "context7_query", {})).toBeUndefined();
     expect(guardToolCall(info, "edit", { filePath: "/docs/plan.md" })).toContain("nicht erlaubt");
     expect(guardToolCall(info, "write", { filePath: "/ws/x.ts" })).toContain("Nur-lesen");
     expect(guardToolCall(info, "read", { filePath: "/ws/x.ts" })).toBeUndefined();
@@ -77,6 +81,9 @@ describe("Konfiguration und Tools", () => {
     expect(resolveOptions({ url: "http://x", autoStart: false })).toMatchObject({ url: "http://x", autoStart: false, agentTools: true });
     expect(workerEnv({ AIFLOW_WORKER: "1", AIFLOW_DAEMON_URL: "http://d", AIFLOW_WORKER_TOKEN: "t" })).toEqual({ daemonUrl: "http://d", token: "t" });
     expect(workerEnv({})).toBeUndefined();
+    const withPaths = resolveOptions({ url: "http://127.0.0.1:5800", dataDir: "~/aiflow-daten", opencodeConfig: "~/.config/opencode.jsonc" });
+    expect(serveArgs(withPaths)).toEqual(["serve", "--detach", "--port", "5800", "--data-dir", "~/aiflow-daten", "--opencode-config", "~/.config/opencode.jsonc"]);
+    expect(serveArgs(resolveOptions({ url: "http://127.0.0.1:5739" }))).toEqual(["serve", "--detach", "--port", "5739"]);
     expect(WORKER_TOOL_NAMES).toContain("aiflow_handoff");
     expect(JSON.stringify(delegateSchema(["code-explorer"]))).toContain("code-explorer");
   });

@@ -30,6 +30,12 @@ export function SettingsPage() {
           <dd className="flex flex-wrap gap-1">{runtime.data?.models.slice(0, 12).map((m) => <Badge key={`${m.providerID}/${m.modelID}`}>{`${m.providerID}/${m.modelID}`}</Badge>)}</dd>
           <dt className="text-slate-500">MCP-Server</dt>
           <dd className="flex flex-wrap gap-1">{(runtime.data?.mcp ?? []).length === 0 ? <span className="text-slate-400">keine</span> : runtime.data?.mcp.map((m) => <Badge key={m.name} color={m.status === "connected" ? "green" : "amber"}>{m.name}</Badge>)}</dd>
+          <dt className="text-slate-500">opencode-Konfiguration</dt>
+          <dd className="font-mono text-xs">{runtime.data?.paths.opencodeConfig ?? <span className="font-sans text-slate-400">Standard von opencode (zusätzlich: Projekt-opencode.json)</span>}</dd>
+          <dt className="text-slate-500">Datenverzeichnis</dt>
+          <dd className="font-mono text-xs">{runtime.data?.paths.data}</dd>
+          <dt className="text-slate-500">Konfiguration</dt>
+          <dd className="font-mono text-xs">{runtime.data?.paths.config}/config.json</dd>
         </dl>
       </Card>
       <Card title="Projekte">

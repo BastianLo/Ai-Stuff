@@ -10,6 +10,7 @@ import {
   matchesPattern,
   parseDuration,
   parseHandoff,
+  mcpRules,
   presetRules,
   renderTemplate,
   slugify,
@@ -982,7 +983,7 @@ class RunController {
       delegation: SubagentSettings | undefined;
     },
   ): PermissionRule[] {
-    const rules: PermissionRule[] = [...presetRules(agent.permissions.preset), ...agent.permissions.rules];
+    const rules: PermissionRule[] = [...presetRules(agent.permissions.preset), ...mcpRules(agent.mcp), ...agent.permissions.rules];
     if (agent.permissions.questions) rules.push({ action: "question", resource: "*", effect: "allow" });
     if (opts.readOnly) rules.push({ action: "edit", resource: "*", effect: "deny" });
     if (opts.writeScope) {
@@ -990,7 +991,7 @@ class RunController {
       for (const scope of opts.writeScope) rules.push({ action: "edit", resource: `${opts.workspacePath}/${scope}`, effect: "allow" });
     }
     if (opts.delegation?.mode === "enforced") {
-      for (const action of ["read", "glob", "grep", "list", "edit", "shell", "webfetch", "websearch"]) {
+      for (const action of ["read", "glob", "grep", "list", "edit", "shell", "webfetch", "websearch", "mcp"]) {
         if (!opts.delegation.keepTools.includes(action)) rules.push({ action, resource: "*", effect: "deny" });
       }
     }

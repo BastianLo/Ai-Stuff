@@ -291,7 +291,7 @@ export function createApp(daemon: Daemon, options: AppOptions = {}): Hono {
     return c.json({ ok: true });
   });
 
-  api.get("/runtime", async (c) => c.json(await daemon.runtimeInfo()));
+  api.get("/runtime", async (c) => c.json(await daemon.runtimeInfo(c.req.query("project"))));
 
   // Globale Events (Run-Status, Definitionen, Inbox)
   api.get("/events", (c) => {

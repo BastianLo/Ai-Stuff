@@ -14,7 +14,11 @@ export type PermissionRule = z.infer<typeof permissionRuleSchema>;
 export const permissionPresetSchema = z.enum(["read-only", "implement", "full"]);
 export type PermissionPreset = z.infer<typeof permissionPresetSchema>;
 
-/** Bekannte Aktionen (v2-Namen). Der v1-Treiber übersetzt `shell` → `bash`, `subagent` → `task`. */
+/**
+ * Bekannte Aktionen (v2-Namen). Der v1-Treiber übersetzt `shell` → `bash`, `subagent` → `task`.
+ * `mcp` ist versionsneutral: Ressource ist der Name des MCP-Servers; die Runtime bildet die Regel
+ * auf die Tool-Namen `<server>_<tool>` ab.
+ */
 export const KNOWN_ACTIONS = [
   "read",
   "edit",
@@ -28,6 +32,7 @@ export const KNOWN_ACTIONS = [
   "skill",
   "question",
   "external_directory",
+  "mcp",
 ] as const;
 
 const rule = (action: string, resource: string, effect: PermissionEffect): PermissionRule => ({ action, resource, effect });
@@ -73,13 +78,24 @@ export function presetRules(preset: PermissionPreset): PermissionRule[] {
   }
 }
 
+export interface McpAccess {
+  default: "allow" | "deny";
+  allow: readonly string[];
+  deny: readonly string[];
+}
+
+/** MCP-Zugriff eines Agenten als Regeln (Ressource = Servername). Ein Verbot schlägt eine Erlaubnis. */
+export function mcpRules(access: McpAccess): PermissionRule[] {
+  return [rule("mcp", "*", access.default), ...access.allow.map((s) => rule("mcp", s, "allow")), ...access.deny.map((s) => rule("mcp", s, "deny"))];
+}
+
 /** Glob-Abgleich mit `*` (beliebig) und `?` (ein Zeichen); `**` wie `*`. */
 export function matchesPattern(pattern: string, value: string): boolean {
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*+/g, ".*").replace(/\?/g, ".");
   return new RegExp(`^${escaped}$`, "s").test(value);
 }
 
-/** Wertet Regeln aus: die letzte passende Regel gewinnt, ohne Treffer gilt `fallback`. */
+/** Wertet Regeln aus: die letzte passende Regel gewinnt, ohne Treffer gilt `fallback`. Aktion und Ressource dürfen Muster sein (wie in opencode). */
 export function evaluatePermission(
   rules: readonly PermissionRule[],
   action: string,
@@ -88,7 +104,7 @@ export function evaluatePermission(
 ): PermissionEffect {
   let effect: PermissionEffect | undefined;
   for (const r of rules) {
-    if ((r.action === action || r.action === "*") && matchesPattern(r.resource, resource)) effect = r.effect;
+    if (matchesPattern(r.action, action) && matchesPattern(r.resource, resource)) effect = r.effect;
   }
   return effect ?? fallback;
 }

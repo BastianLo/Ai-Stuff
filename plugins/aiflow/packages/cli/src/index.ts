@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S node --disable-warning=ExperimentalWarning
 import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -8,13 +8,24 @@ import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { AiflowClient, ApiError, type RunView } from "@aiflow/client";
 import { TERMINAL_RUN_STATUSES } from "@aiflow/core";
-import { defaultPaths, ensureToken, examplesDir, startDaemon } from "@aiflow/server";
+import { ensureToken, examplesDir, readSettings, resolvePaths, settingsSchema, startDaemon, type AiflowPaths, type AiflowSettings } from "@aiflow/server";
 
-const paths = defaultPaths();
+let resolved: AiflowPaths | undefined;
+/** Verzeichnisse nach globalen Optionen, Umgebung und `config.json` (erst nach dem Parsen der Optionen gültig). */
+function paths(): AiflowPaths {
+  if (resolved) return resolved;
+  const o = program.opts<{ dataDir?: string; opencodeConfig?: string }>();
+  try {
+    resolved = resolvePaths({ dataDir: o.dataDir, opencodeConfig: o.opencodeConfig });
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
+  return resolved;
+}
 const DEFAULT_PORT = 5739;
 
 function client(port: number): AiflowClient {
-  return new AiflowClient({ baseUrl: `http://127.0.0.1:${port}`, token: ensureToken(paths.config) });
+  return new AiflowClient({ baseUrl: `http://127.0.0.1:${port}`, token: ensureToken(paths().config) });
 }
 
 function fail(message: string): never {
@@ -34,6 +45,8 @@ async function guard<T>(promise: Promise<T>): Promise<T> {
 
 const program = new Command().name("aiflow").description("AiFlow – feste Umsetzungs-Workflows aus KI-Agenten").version("0.1.0");
 program.option("-p, --port <port>", "Port des Daemons", (v) => Number(v), DEFAULT_PORT);
+program.option("--data-dir <dir>", "Datenverzeichnis (Datenbank, Worktrees, Dokumente, Logs)");
+program.option("--opencode-config <file>", "opencode-Konfigurationsdatei für die Agenten (z. B. ~/.config/opencode.jsonc)");
 const port = (): number => program.opts<{ port: number }>().port;
 
 program
@@ -47,7 +60,7 @@ program
   .option("--no-seed", "keine Beispiel-Definitionen übernehmen")
   .action(async (opts: { detach?: boolean; runtime: "opencode" | "simulation"; opencode?: string; api: "auto" | "v1" | "v2"; simulationSpeed: number; seed: boolean }) => {
     if (opts.detach) {
-      const logDir = join(paths.data, "logs");
+      const logDir = join(paths().data, "logs");
       mkdirSync(logDir, { recursive: true });
       const out = openSync(join(logDir, "daemon.log"), "a");
       const args = process.argv.slice(1).filter((a) => a !== "--detach");
@@ -63,7 +76,7 @@ program
       fail(`Daemon startet nicht. Log: ${join(logDir, "daemon.log")}`);
     }
     const running = await startDaemon({
-      paths,
+      paths: paths(),
       port: port(),
       runtime: opts.runtime,
       ...(opts.opencode ? { opencodeBinary: opts.opencode } : {}),
@@ -82,7 +95,7 @@ program
   .command("stop")
   .description("Daemon beenden")
   .action(() => {
-    const lock = join(paths.data, "daemon.lock");
+    const lock = join(paths().data, "daemon.lock");
     if (!existsSync(lock)) fail("Kein laufender Daemon gefunden.");
     process.kill(Number(readFileSync(lock, "utf8")), "SIGTERM");
     process.stdout.write("✔ Daemon beendet\n");
@@ -240,8 +253,15 @@ setup
   .action(async (opts: { api: string; yes?: boolean; opencode: string }) => {
     const api = opts.api !== "auto" ? opts.api : await detectApi(opts.opencode);
     const pluginDir = fileURLToPath(new URL("../../opencode-plugin", import.meta.url));
-    const file = join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "opencode", "opencode.json");
-    const options = { url: `http://127.0.0.1:${port()}`, autoStart: true };
+    const global = program.opts<{ dataDir?: string; opencodeConfig?: string }>();
+    // Eigene opencode-Konfiguration: Plugin dort eintragen, damit es auch im Agent-Worker aktiv ist
+    const file = paths().opencodeConfig ?? join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "opencode", "opencode.json");
+    const options = {
+      url: `http://127.0.0.1:${port()}`,
+      autoStart: true,
+      ...(global.dataDir ? { dataDir: global.dataDir } : {}),
+      ...(global.opencodeConfig ? { opencodeConfig: global.opencodeConfig } : {}),
+    };
     const entry = api === "v2" ? { package: pluginDir, options } : [join(pluginDir, "src", "index.ts"), options];
     const key = api === "v2" ? "plugins" : "plugin";
     let config: Record<string, unknown> = {};
@@ -269,6 +289,39 @@ setup
     process.stdout.write("✔ eingetragen. opencode neu starten.\n");
   });
 
+const SETTING_KEYS = Object.keys(settingsSchema.shape) as (keyof AiflowSettings)[];
+
+const configCmd = program.command("config").description("Dauerhafte Einstellungen (config.json im Konfigurationsverzeichnis)");
+configCmd
+  .command("show", { isDefault: true })
+  .description("Wirksame Pfade und gespeicherte Einstellungen anzeigen")
+  .action(() => {
+    const p = paths();
+    process.stdout.write(`Datei:                 ${join(p.config, "config.json")}\n`);
+    process.stdout.write(`Gespeichert:           ${JSON.stringify(readSettings(p.config))}\n`);
+    process.stdout.write(`Datenverzeichnis:      ${p.data}\n`);
+    process.stdout.write(`opencode-Konfiguration: ${p.opencodeConfig ?? "(Standard von opencode)"}\n`);
+  });
+configCmd
+  .command("set <key> <value>")
+  .description(`Einstellung setzen (${SETTING_KEYS.join(", ")})`)
+  .action((key: string, value: string) => writeSetting(key, value));
+configCmd
+  .command("unset <key>")
+  .description("Einstellung entfernen")
+  .action((key: string) => writeSetting(key, undefined));
+
+function writeSetting(key: string, value: string | undefined): void {
+  if (!(SETTING_KEYS as string[]).includes(key)) fail(`Unbekannte Einstellung „${key}“. Erlaubt: ${SETTING_KEYS.join(", ")}`);
+  const dir = paths().config;
+  const next: Record<string, string> = { ...readSettings(dir) };
+  if (value === undefined) Reflect.deleteProperty(next, key);
+  else next[key] = value;
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "config.json"), `${JSON.stringify(settingsSchema.parse(next), null, 2)}\n`);
+  process.stdout.write(`✔ ${key} ${value === undefined ? "entfernt" : `= ${value}`}. Ein laufender Daemon übernimmt das erst nach Neustart (aiflow stop && aiflow serve --detach).\n`);
+}
+
 async function detectApi(binary: string): Promise<"v1" | "v2"> {
   const version = await new Promise<string>((res) => execFile(binary, ["--version"], (e, out) => res(e ? "" : out.trim())));
   if (!version) fail(`opencode nicht gefunden („${binary} --version“). Mit --api v1|v2 angeben.`);
@@ -291,7 +344,9 @@ program
       const info = await client(port()).runtime().catch(() => undefined);
       if (info && info.id !== "simulation") check(info.plugins.some((p) => p.includes("aiflow")), "AiFlow-Plugin im Worker aktiv");
     }
-    check(true, `Konfiguration: ${paths.config} · Daten: ${paths.data}`);
+    const p = paths();
+    check(true, `Konfiguration: ${p.config} · Daten: ${p.data}`);
+    if (p.opencodeConfig) check(existsSync(p.opencodeConfig), `opencode-Konfiguration für Agenten: ${p.opencodeConfig}${existsSync(p.opencodeConfig) ? "" : " (fehlt)"}`);
   });
 
 await program.parseAsync(process.argv);

@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { AiflowClient, type GlobalEvent, type RunView } from "@aiflow/client";
 import { commandName, type RunSummary, type Workflow } from "@aiflow/core";
-import { readAuthToken, type PluginOptions } from "./config.js";
+import { readAuthToken, serveArgs, type PluginOptions } from "./config.js";
 
 export interface WorkflowCommand {
   id: string;
@@ -28,7 +28,7 @@ export class BridgeService {
   async ensureDaemon(): Promise<boolean> {
     if (await this.client.health().then(() => true, () => false)) return true;
     if (!this.options.autoStart) return false;
-    const child = spawn(this.options.aiflowCommand, ["serve", "--detach"], { detached: true, stdio: "ignore" });
+    const child = spawn(this.options.aiflowCommand, serveArgs(this.options), { detached: true, stdio: "ignore" });
     child.unref();
     for (let i = 0; i < 50; i++) {
       await new Promise((r) => setTimeout(r, 200));

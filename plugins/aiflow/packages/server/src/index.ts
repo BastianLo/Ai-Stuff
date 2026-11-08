@@ -7,7 +7,7 @@ import { Daemon, type DaemonOptions } from "./daemon.js";
 
 export { Daemon, type DaemonOptions, type GlobalEvent, type RuntimeStatus } from "./daemon.js";
 export { createApp, toRunView } from "./app.js";
-export { defaultPaths, ensureToken, type AiflowPaths } from "./paths.js";
+export { defaultPaths, ensureToken, expandPath, readSettings, resolvePaths, settingsSchema, type AiflowPaths, type AiflowSettings, type PathOverrides } from "./paths.js";
 
 export const defaultWebDir = fileURLToPath(new URL("../../web/dist", import.meta.url));
 export const examplesDir = fileURLToPath(new URL("../../../examples", import.meta.url));

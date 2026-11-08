@@ -62,7 +62,10 @@ export const agentSchema = z.object({
   permissions: z
     .object({ preset: permissionPresetSchema.default("read-only"), rules: z.array(permissionRuleSchema).default([]), questions: z.boolean().default(false) })
     .default({ preset: "read-only", rules: [], questions: false }),
-  mcp: z.object({ allow: z.array(z.string()).default([]), deny: z.array(z.string()).default([]) }).default({ allow: [], deny: [] }),
+  /** MCP-Server: `default` gilt für nicht aufgeführte Server; `allow`/`deny` überschreiben pro Server. */
+  mcp: z
+    .object({ default: z.enum(["allow", "deny"]).default("allow"), allow: z.array(z.string()).default([]), deny: z.array(z.string()).default([]) })
+    .default({ default: "allow", allow: [], deny: [] }),
   output: outputContractSchema.default({ type: "text" }),
   contextMode: contextModeSchema.default("fresh"),
   decision: z.object({ votes: z.number().int().min(1).max(9).default(1) }).default({ votes: 1 }),

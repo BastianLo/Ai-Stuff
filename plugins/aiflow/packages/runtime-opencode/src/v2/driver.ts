@@ -98,11 +98,16 @@ export class V2Driver implements OpencodeDriver {
     });
   }
 
-  async listMcp(): Promise<{ name: string; status: string }[]> {
+  async listMcp(directory?: string): Promise<{ name: string; status: string }[]> {
     if (!this.client.mcp) return [];
-    const data = await this.client.mcp.list();
-    const list = Array.isArray(data) ? data : [];
-    return list.map((s) => ({ name: str(obj(s).name) ?? "", status: str(obj(s).status) ?? "unknown" }));
+    // Antwort: `{ location, data: McpServer[] }`, Status als `{ status: "connected" | … }`
+    const data = await this.client.mcp.list(directory ? { location: { directory } } : undefined);
+    const raw = Array.isArray(data) ? data : obj(data).data;
+    const list: unknown[] = Array.isArray(raw) ? raw : [];
+    return list.map((s) => {
+      const server = obj(s);
+      return { name: str(server.name) ?? "", status: str(server.status) ?? str(obj(server.status).status) ?? "unknown" };
+    });
   }
 
   async listPlugins(): Promise<string[]> {

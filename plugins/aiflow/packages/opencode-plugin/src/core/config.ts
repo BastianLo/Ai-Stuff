@@ -11,6 +11,10 @@ export interface PluginOptions {
   aiflowCommand: string;
   /** Tools `aiflow_run` / `aiflow_list_workflows` für den Haupt-Agenten anbieten */
   agentTools: boolean;
+  /** Datenverzeichnis des Daemons (`--data-dir`), nur beim automatischen Start */
+  dataDir?: string;
+  /** opencode-Konfiguration für die Agenten (`--opencode-config`), nur beim automatischen Start */
+  opencodeConfig?: string;
 }
 
 export function resolveOptions(raw: unknown): PluginOptions {
@@ -20,7 +24,21 @@ export function resolveOptions(raw: unknown): PluginOptions {
     autoStart: o.autoStart !== false,
     aiflowCommand: typeof o.aiflowCommand === "string" ? o.aiflowCommand : "aiflow",
     agentTools: o.agentTools !== false,
+    ...(typeof o.dataDir === "string" && o.dataDir ? { dataDir: o.dataDir } : {}),
+    ...(typeof o.opencodeConfig === "string" && o.opencodeConfig ? { opencodeConfig: o.opencodeConfig } : {}),
   };
+}
+
+/** Argumente für den automatischen Daemon-Start. */
+export function serveArgs(options: PluginOptions): string[] {
+  const port = new URL(options.url).port;
+  return [
+    "serve",
+    "--detach",
+    ...(port ? ["--port", port] : []),
+    ...(options.dataDir ? ["--data-dir", options.dataDir] : []),
+    ...(options.opencodeConfig ? ["--opencode-config", options.opencodeConfig] : []),
+  ];
 }
 
 export function configDir(): string {
